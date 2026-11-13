@@ -106,9 +106,10 @@ std::vector<const ManualTopic*> findTopics(const QString& question, int count, c
     for (const ManualTopic& topic : topics) {
         double score = 0;
         for (const QString& keyword : topic.keywords) {
-            // A phrase such as "press pull" counts when it appears whole.
+            // A phrase such as "around my part" counts when it appears whole, and the longer
+            // it is, the more surely it means this topic rather than one that shares a word.
             if (keyword.contains(QLatin1Char(' '))) {
-                if (lower.contains(keyword)) score += 4;
+                if (lower.contains(keyword)) score += 1 + 2 * (keyword.count(QLatin1Char(' ')) + 1);
             } else if (asked.contains(stem(keyword))) {
                 score += 3;
             }

@@ -80,7 +80,7 @@ Tip: Ctrl+A selects everything. Double-click a group to work on the parts inside
 ## Move or rotate a part
 id: move
 keywords: move, rotate, turn, spin, position, place, shift, translate, orientation, angle, flip, reposition
-Moves a part and turns it, with arrows and rings you drag or numbers you type.
+Moves a part and turns the part itself, with arrows and rings you drag or numbers you type. To turn your view of the workspace instead, see "Turn the workspace view".
 
 1. Click the part to select it. {viewport}
 2. Point at Transform to open its list. {transformButton}
@@ -269,18 +269,20 @@ Makes a mirrored copy on the other side of a flat face.
 3. Click the solids to mirror, then a flat face as the mirror plane. {stepBar}
 4. Press Enter to apply. {stepApply}
 
-## Turn, pan and zoom the view
+## Turn the workspace view: orbit, pan and zoom
 id: view
-keywords: view, camera, look, look at, from the top, top view, side view, front view, from above, rotate view, orbit, turn view, pan, zoom, closer, fit, home, angle, perspective, see, navigate
-Changes how you look at the design. It never changes the design itself.
+keywords: view, camera, look, look at, from the top, top view, side view, front view, from above, rotate view, rotate the view, rotate workspace, rotate the workspace, rotate my workspace, turn the workspace, spin the view, orbit, orbit around, around the part, around my part, around a part, around it, pivot, centre of rotation, center of rotation, workspace, pan, zoom, closer, fit, home, angle, perspective, see, navigate
+Changes how you look at the design: turn, slide or zoom the view. It never moves the parts. To turn a part itself, see "Move or rotate a part".
 
 1. Right-drag to turn the view, middle-drag to slide it, and use the wheel to zoom. {viewport}
 2. Click a face, edge or corner of the view cube to look from there. Point at the cube to show a house button, which returns to the start view. {viewCube}
-3. These buttons make a left-drag pan, orbit or zoom instead of selecting. {nav_orbit}
-4. Fit frames the selection, or everything. {nav_fit}
+3. To turn the view around a part, click the Orbit around the part button right under the cube. It keeps the selected part, or all parts when none is selected, in the middle of the view, and turning the view circles it. Select another part and the view moves to it. {nav_orbitpart}
+4. These buttons make a left-drag pan, orbit or zoom instead of selecting. {nav_orbit}
+5. Fit frames the selection, or everything. {nav_fit}
 also: nav_pan, nav_zoom, viewCubeHome
 
 Tip: press F to fit the view when nothing is selected.
+Tip: sliding the view with a middle-drag turns Orbit around the part off, so you can move freely. Click the button again to centre the part.
 
 ## Change how the design looks (Visual style)
 id: visual-style

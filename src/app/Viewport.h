@@ -15,6 +15,7 @@
 
 #include <array>
 #include <functional>
+#include <optional>
 
 class QMouseEvent;
 
@@ -60,6 +61,17 @@ public:
     // Glides there when animate is set, so the change of view is easy to follow.
     void setOrientation(float yaw, float pitch, bool animate);
     void orbitBy(QPointF pixels);  // as a right-drag of this many pixels
+
+    // Orbit around the part: turning the view circles the point pivot gives (the selected
+    // part's centre, say) instead of the middle of the view. With no point, or with it off,
+    // the view turns about its own middle as usual.
+    void setOrbitPivot(std::function<std::optional<QVector3D>()> pivot) { pivot_ = std::move(pivot); }
+    // While on, the view also keeps the part in the middle: selecting another part, or an
+    // edit that moves it, glides it back. Panning turns it off, for free movement.
+    void setOrbitAroundPart(bool on);
+    bool orbitAroundPart() const { return orbitAroundPart_; }
+    // Slides the view, without turning or zooming, until point is in the middle.
+    void centreOn(const QVector3D& point, bool animate);
     QMatrix4x4 viewRotation() const;  // the view without its position, for the ViewCube
 
     // What a plain left drag does to the camera. Right drag always orbits, middle drag pans.
@@ -99,6 +111,7 @@ public:
     double worldPerPixel(td::V3 point) const;
 
 signals:
+    void orbitAroundPartChanged(bool on);  // also when panning turns it off
     void marqueeFinished(const QRect& rect, bool additive, bool crossing);
     void clicked(QPoint position, bool shift);
     void doubleClicked(QPoint position);
@@ -179,6 +192,13 @@ private:
     bool gridVisible_ = true;
     QString dropPayload_;
     class QVariantAnimation* turn_ = nullptr;
+    class QVariantAnimation* glide_ = nullptr;
+    class QTimer* follow_ = nullptr;
+    std::optional<QVector3D> centred_;  // the part centre the view was last moved to
+    void followPart();
+    std::function<std::optional<QVector3D>()> pivot_;
+    bool orbitAroundPart_ = false;
+    void turnBy(float yawDegrees, float pitchDegrees, float pitchLimit);
     Navigation navigation_ = Navigation::Orbit;
     bool rightPressed_ = false;
     bool rightDragging_ = false;

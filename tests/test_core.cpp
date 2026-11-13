@@ -1308,6 +1308,10 @@ static void testManual() {
     CHECK(best("my part is floating above the bed") == "drop");
     CHECK(best("how do I use press pull") == "press-pull");
     CHECK(best("what tolerance for a lid that fits") == "advice-fit");
+    // Turning the view is not turning the part.
+    CHECK(best("how do I rotate my workspace?") == "view");
+    CHECK(best("how do I rotate around my part") == "view");
+    CHECK(best("how do I rotate the part 90 degrees") == "move");
     CHECK(findTopics("zzz qqq", 3).empty());
 
     CHECK(isHelpQuestion("How do I round an edge?") && isHelpQuestion("where is export") && isHelpQuestion("what does smart scale do"));

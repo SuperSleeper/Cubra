@@ -30,6 +30,7 @@ enum class Icon {
     Group,
     Pattern,
     Orbit,
+    OrbitPart,
     Zoom,
     VisualStyle,
     Eye,

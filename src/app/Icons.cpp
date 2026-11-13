@@ -154,6 +154,20 @@ void draw(QPainter& p, Icon icon, const QColor& color) {
             p.drawPolyline(QPolygonF{end + QPointF(-3.2, -1.2), end, end + QPointF(-0.6, -3.4)});
             break;
         }
+        case Icon::OrbitPart: {
+            // A solid part with a flat ring turning round it: the view circles the part.
+            p.save();
+            p.setBrush(color);
+            drawCube(p, 8, 6, 8);
+            p.restore();
+            QPainterPath ring;
+            ring.arcMoveTo(QRectF(2, 9, 20, 9), 210);
+            ring.arcTo(QRectF(2, 9, 20, 9), 210, 300);
+            p.drawPath(ring);
+            const QPointF end = ring.currentPosition();
+            p.drawPolyline(QPolygonF{end + QPointF(-3.4, -0.4), end, end + QPointF(-1.2, -3.0)});
+            break;
+        }
         case Icon::Zoom:
             p.drawEllipse(QPointF(10, 10), 6.5, 6.5);
             p.drawLine(QPointF(14.8, 14.8), QPointF(21, 21));

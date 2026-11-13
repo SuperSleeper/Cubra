@@ -4,6 +4,8 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QVariantAnimation>
+#include <QGuiApplication>
+#include <QTimer>
 #include <QWheelEvent>
 #include <QtMath>
 
@@ -102,11 +104,81 @@ void Viewport::setOrientation(float yaw, float pitch, bool animate) {
     turn_->start();
 }
 
-void Viewport::orbitBy(QPointF pixels) {
-    yaw_ -= float(pixels.x()) * 0.4f;
-    pitch_ = std::clamp(pitch_ + float(pixels.y()) * 0.4f, -89.9f, 89.9f);
+void Viewport::orbitBy(QPointF pixels) { turnBy(-float(pixels.x()) * 0.4f, float(pixels.y()) * 0.4f, 89.9f); }
+
+void Viewport::turnBy(float yawDegrees, float pitchDegrees, float pitchLimit) {
+    const float oldYaw = yaw_, oldPitch = pitch_;
+    yaw_ += yawDegrees;
+    pitch_ = std::clamp(pitch_ + pitchDegrees, -pitchLimit, pitchLimit);
+    // Around a pivot, the middle of the view swings round it with the camera: the offset
+    // from pivot to middle keeps its place in the camera's own frame.
+    if (orbitAroundPart_ && pivot_)
+        if (const std::optional<QVector3D> pivot = pivot_()) {
+            const auto frame = [](float yaw, float pitch, QVector3D* forward, QVector3D* right, QVector3D* up) {
+                const float y = qDegreesToRadians(yaw), p = qDegreesToRadians(pitch);
+                *forward = -QVector3D(std::cos(p) * std::cos(y), std::cos(p) * std::sin(y), std::sin(p));
+                *right = QVector3D::crossProduct(*forward, QVector3D(0, 0, 1)).normalized();
+                *up = QVector3D::crossProduct(*right, *forward);
+            };
+            QVector3D f0, r0, u0, f1, r1, u1;
+            frame(oldYaw, oldPitch, &f0, &r0, &u0);
+            frame(yaw_, pitch_, &f1, &r1, &u1);
+            const QVector3D offset = target_ - *pivot;
+            target_ = *pivot + f1 * QVector3D::dotProduct(offset, f0) + r1 * QVector3D::dotProduct(offset, r0) + u1 * QVector3D::dotProduct(offset, u0);
+        }
     update();
     emit cameraChanged();
+}
+
+void Viewport::setOrbitAroundPart(bool on) {
+    if (on == orbitAroundPart_) return;
+    orbitAroundPart_ = on;
+    centred_.reset();
+    if (!follow_) {
+        follow_ = new QTimer(this);
+        follow_->setInterval(150);
+        connect(follow_, &QTimer::timeout, this, &Viewport::followPart);
+    }
+    if (on) {
+        // Turning it on brings the part to the middle at once, so it turns in place.
+        followPart();
+        follow_->start();
+    } else {
+        follow_->stop();
+    }
+    emit orbitAroundPartChanged(on);
+}
+
+void Viewport::followPart() {
+    // Never while a button is down: a drag in progress must not have the view slide under it.
+    if (!orbitAroundPart_ || !pivot_ || QGuiApplication::mouseButtons() != Qt::NoButton) return;
+    const std::optional<QVector3D> pivot = pivot_();
+    if (!pivot || (centred_ && (*pivot - *centred_).length() < 0.01f)) return;
+    centred_ = pivot;
+    centreOn(*pivot, true);
+}
+
+void Viewport::centreOn(const QVector3D& point, bool animate) {
+    if (glide_) glide_->stop();
+    if (!animate) {
+        target_ = point;
+        update();
+        emit cameraChanged();
+        return;
+    }
+    if (!glide_) glide_ = new QVariantAnimation(this);
+    glide_->disconnect(this);
+    glide_->setDuration(280);
+    glide_->setEasingCurve(QEasingCurve::InOutCubic);
+    glide_->setStartValue(0.0);
+    glide_->setEndValue(1.0);
+    const QVector3D from = target_;
+    connect(glide_, &QVariantAnimation::valueChanged, this, [this, from, point](const QVariant& value) {
+        target_ = from + (point - from) * value.toFloat();
+        update();
+        emit cameraChanged();
+    });
+    glide_->start();
 }
 
 QMatrix4x4 Viewport::viewRotation() const {
@@ -669,11 +741,12 @@ void Viewport::mouseMoveEvent(QMouseEvent* event) {
     lastMouse_ = now;
     const bool leftNavigates = (event->buttons() & Qt::LeftButton) && !selectMode_;
     if ((leftNavigates && navigation_ == Navigation::Orbit) || (event->buttons() & Qt::RightButton)) {
-        yaw_ -= delta.x() * 0.4f;
-        pitch_ = std::clamp(pitch_ + delta.y() * 0.4f, -89.0f, 89.0f);
+        turnBy(-float(delta.x()) * 0.4f, float(delta.y()) * 0.4f, 89.0f);
     } else if (leftNavigates && navigation_ == Navigation::Zoom) {
         distance_ = std::clamp(distance_ * std::pow(1.01f, float(delta.y())), 2.0f, 20000.0f);
     } else if ((leftNavigates && navigation_ == Navigation::Pan) || (event->buttons() & Qt::MiddleButton)) {
+        // Sliding the view by hand means moving freely: the part no longer holds the middle.
+        if (orbitAroundPart_) setOrbitAroundPart(false);
         const QVector3D forward = (target_ - eye()).normalized();
         const QVector3D right = QVector3D::crossProduct(forward, QVector3D(0, 0, 1)).normalized();
         const QVector3D up = QVector3D::crossProduct(right, forward);

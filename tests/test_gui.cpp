@@ -38,6 +38,8 @@
 #include <QDialog>
 #include <QDropEvent>
 #include <QMimeData>
+#include <QSettings>
+#include <QLineF>
 #include <QSpinBox>
 #include <QImage>
 #include <QTest>
@@ -1640,6 +1642,96 @@ static void testHowTo(MainWindow& window, Viewport* viewport, const char* screen
     CHECK(!guide->active());
 }
 
+// Orbit around the part: turning the view circles the part, which stays put on screen,
+// instead of swinging round the middle of the view.
+static void testOrbitAroundPart(MainWindow& window, Viewport* viewport, const QString& folder, const char* screenshot) {
+    const QVariant saved = QSettings().value("view/orbitAroundPart");
+    const QString path = folder + "/orbit.cubra";
+    QFile file(path);
+    CHECK(file.open(QIODevice::WriteOnly));
+    file.write(R"({"features":[{"name":"Box","op":"add","shape":"box","width":20,"depth":20,"height":20,"x":60}]})");
+    file.close();
+    CHECK(window.openFile(path));
+    const td::V3 centre{60, 0, 10};
+    const QPointF middle(viewport->width() / 2.0, viewport->height() / 2.0);
+    const auto near = [](QPointF a, QPointF b, double within) { return QLineF(a, b).length() < within; };
+
+    auto* toggle = window.findChild<QToolButton*>("nav_orbitpart");
+    CHECK(toggle && toggle->isCheckable() && toggle->parentWidget()->objectName() == "navigationBar");
+    // It is the first control under the cube.
+    CHECK(toggle->parentWidget()->findChildren<QToolButton*>(Qt::FindDirectChildrenOnly).front() == toggle);
+    if (toggle->isChecked()) toggle->click();
+    CHECK(!viewport->orbitAroundPart());
+
+    // Off: with the box away from the middle, turning the view swings it across the screen.
+    viewport->centreOn(QVector3D(0, 0, 0), false);
+    QPointF before = viewport->project(centre);
+    CHECK(!near(before, middle, 20));
+    viewport->orbitBy(QPointF(80, 30));
+    CHECK(!near(viewport->project(centre), before, 20));
+
+    // On: it glides the box to the middle, and turning the view leaves it there.
+    toggle->click();
+    CHECK(viewport->orbitAroundPart() && QSettings().value("view/orbitAroundPart").toBool());
+    QTest::qWait(450);
+    CHECK(near(viewport->project(centre), middle, 2));
+    viewport->orbitBy(QPointF(80, 30));
+    CHECK(near(viewport->project(centre), middle, 2));
+    if (screenshot) window.grab().save(QString::fromLocal8Bit(screenshot));
+
+    // Even with the view slid off the box, the view circles the box: it holds its place on screen.
+    viewport->centreOn(QVector3D(20, 10, 0), false);
+    before = viewport->project(centre);
+    CHECK(!near(before, middle, 20));
+    for (int i = 0; i < 6; ++i) viewport->orbitBy(QPointF(25, -12));
+    CHECK(near(viewport->project(centre), before, 2));
+
+    toggle->click();
+    CHECK(!viewport->orbitAroundPart());
+
+    // While on, it keeps the part in the middle: selecting the other part glides the view to it.
+    {
+        QFile two(folder + "/orbit-two.cubra");
+        CHECK(two.open(QIODevice::WriteOnly));
+        two.write(R"({"features":[{"name":"Left","op":"add","shape":"box","width":20,"depth":20,"height":20,"x":-60},
+                                  {"name":"Right","op":"add","shape":"box","width":20,"depth":20,"height":20,"x":60}]})");
+        two.close();
+        CHECK(window.openFile(folder + "/orbit-two.cubra"));
+    }
+    auto* selection = window.findChild<SelectionController*>();
+    const td::V3 left{-60, 0, 10}, right{60, 0, 10};
+    viewport->fit({-90, -30, 0}, {90, 30, 20});
+    selection->selectBodies({0});
+    toggle->click();
+    QTest::qWait(500);
+    CHECK(near(viewport->project(left), middle, 2));
+    selection->selectBodies({1});
+    QTest::qWait(600);  // noticed within 150 ms, then a 280 ms glide
+    CHECK(near(viewport->project(right), middle, 2));
+    // Nothing selected: the middle of all the parts.
+    selection->clear();
+    QTest::qWait(600);
+    CHECK(near(viewport->project(td::V3{0, 0, 10}), middle, 2));
+
+    // A middle-drag slides the view freely: it turns the toggle off, and the button shows it.
+    {
+        const QPointF from = middle + QPointF(40, 40), to = from + QPointF(80, 20);
+        QMouseEvent down(QEvent::MouseButtonPress, from, viewport->mapToGlobal(from), Qt::MiddleButton, Qt::MiddleButton, Qt::NoModifier);
+        QApplication::sendEvent(viewport, &down);
+        moveTo(viewport, to, Qt::MiddleButton);
+        QMouseEvent up(QEvent::MouseButtonRelease, to, viewport->mapToGlobal(to), Qt::MiddleButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(viewport, &up);
+    }
+    CHECK(!viewport->orbitAroundPart() && !toggle->isChecked() && !QSettings().value("view/orbitAroundPart").toBool());
+    const QPointF slid = viewport->project(td::V3{0, 0, 10});
+    CHECK(!near(slid, middle, 20));
+    // Off, it no longer pulls the view back.
+    selection->selectBodies({0});
+    QTest::qWait(500);
+    CHECK(near(viewport->project(td::V3{0, 0, 10}), slid, 1));
+    QSettings().setValue("view/orbitAroundPart", saved.isValid() ? saved : QVariant(false));
+}
+
 int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     if (qEnvironmentVariableIsEmpty("DISPLAY") && qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
@@ -1781,6 +1873,7 @@ int main(int argc, char** argv) {
     testChromeFlow(window, viewport, argc > 8 ? argv[8] : nullptr);
     testGuidedFlow(window, viewport, argc > 9 ? argv[9] : nullptr);
     testHowTo(window, viewport, argc > 10 ? argv[10] : nullptr);
+    testOrbitAroundPart(window, viewport, dir.path(), argc > 11 ? argv[11] : nullptr);
 
     // A click on the workspace takes the keys back from any text box, so Delete deletes.
     for (QWidget* box : {static_cast<QWidget*>(window.findChild<QComboBox*>()), static_cast<QWidget*>(window.findChild<QPlainTextEdit*>())}) {

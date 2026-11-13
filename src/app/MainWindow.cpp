@@ -285,6 +285,26 @@ MainWindow::MainWindow() {
     connect(viewport_, &Viewport::doubleClicked, this, &MainWindow::routeDoubleClick);
     connect(viewport_, &Viewport::contextMenuRequested, this, &MainWindow::showContextMenu);
 
+    // Orbit around the part: the selected parts' middle, or every shown part's when none is selected.
+    viewport_->setOrbitPivot([this]() -> std::optional<QVector3D> {
+        std::vector<int> bodies = selection_->selectedBodies();
+        if (bodies.empty() && selection_->subOwner() >= 0) bodies = {selection_->subOwner()};
+        if (bodies.empty())
+            for (int b = 0; b < int(document_.bodies.size()); ++b)
+                if (!document_.bodies[b].hidden) bodies.push_back(b);
+        std::array<double, 3> low{1e30, 1e30, 1e30}, high{-1e30, -1e30, -1e30};
+        bool any = false;
+        for (int b : bodies) {
+            if (b >= int(bodyResults_.size()) || !bodyResults_[b].ok || bodyResults_[b].mesh.empty()) continue;
+            any = true;
+            for (int a = 0; a < 3; ++a) {
+                low[a] = std::min(low[a], bodyResults_[b].min[a]);
+                high[a] = std::max(high[a], bodyResults_[b].max[a]);
+            }
+        }
+        if (!any) return std::nullopt;
+        return QVector3D(float(low[0] + high[0]) / 2, float(low[1] + high[1]) / 2, float(low[2] + high[2]) / 2);
+    });
     chrome_ = new ViewportChrome(viewport_);
     chrome_->setDrawer(drawerSections());
 

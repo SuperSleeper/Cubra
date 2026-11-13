@@ -21,6 +21,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPropertyAnimation>
+#include <QSettings>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QToolButton>
@@ -87,6 +88,18 @@ ViewportChrome::ViewportChrome(Viewport* viewport) : QObject(viewport), viewport
     barLayout_ = new QVBoxLayout(bar_);
     barLayout_->setContentsMargins(3, 3, 3, 3);
     barLayout_->setSpacing(1);
+
+    // First, right under the cube: turn the view around the part rather than the middle of the view.
+    QToolButton* aroundPart = barButton("nav_orbitpart", int(Icon::OrbitPart),
+                                        tr("Orbit around the part: turning the view circles the selected part, or all parts when none is selected"), true);
+    aroundPart->setChecked(QSettings().value(QStringLiteral("view/orbitAroundPart"), false).toBool());
+    viewport_->setOrbitAroundPart(aroundPart->isChecked());
+    connect(aroundPart, &QToolButton::toggled, this, [this](bool on) {
+        QSettings().setValue(QStringLiteral("view/orbitAroundPart"), on);
+        viewport_->setOrbitAroundPart(on);
+    });
+    // Panning turns it off in the view; the button follows.
+    connect(viewport_, &Viewport::orbitAroundPartChanged, aroundPart, &QToolButton::setChecked);
 
     navigation_ = new QButtonGroup(this);
     const std::pair<const char*, Viewport::Navigation> modes[] = {
