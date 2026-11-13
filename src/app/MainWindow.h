@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/GuideOverlay.h"
 #include "app/Icons.h"
 #include "app/StepTool.h"
 #include "app/TransformController.h"
@@ -39,6 +40,15 @@ public:
     AiPanel* aiPanel() const { return ai_; }
     const td::Document& document() const { return document_; }
     bool saveScreenshot(const QString& path);  // the 3D view only, as a PNG
+
+    // The how-to walkthrough: where a manual step's target is on screen, and the
+    // walkthrough itself. showGuide starts the topic with that id.
+    GuideSpot guideSpot(const QString& name);
+    GuideOverlay* guide() const { return guide_; }
+    void showGuide(const QString& topic);
+    // The toolbar, its lists and the view controls as they are now, in words, for the
+    // assistant: it always matches the running interface.
+    QString interfaceMap() const;
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -130,6 +140,9 @@ private:
     Viewport* viewport_;
     FeaturePanel* panel_;
     AiPanel* ai_;
+    GuideOverlay* guide_ = nullptr;
+    QToolBar* toolbar_ = nullptr;
+    QMenu* fileMenu_ = nullptr;
     QLabel* stats_;
     QSpinBox* bedWidth_;
     QSpinBox* bedDepth_;

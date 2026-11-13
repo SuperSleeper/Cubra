@@ -1,4 +1,6 @@
 #include "ai/CadPrompt.h"
+#include "ai/HelpSession.h"
+#include "ai/Manual.h"
 #include "ai/GpuProbe.h"
 #include "ai/ModelCatalog.h"
 #include "core/Document.h"
@@ -12,7 +14,9 @@
 
 #include <QElapsedTimer>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <QtEndian>
@@ -793,7 +797,7 @@ static void testOrganic() {
 
     // The prompt's own examples are sound: joined up, on the bed, the height they claim.
     const QString prompt = cadSystemPrompt();
-    for (const auto& [opening, height] : {std::pair{"{\"reply\":\"Made a 70 mm snowman", 70.0}, std::pair{"{\"reply\":\"Made a standing cat, 65 mm tall", 65.0}, std::pair{"{\"reply\":\"Made a 150 mm banana", 0.0}, std::pair{"{\"reply\":\"Made a 100 mm toy car", 43.0}}) {
+    for (const auto& [opening, height] : {std::pair{"{\"reply\":\"Made a 70 mm snowman", 70.0}, std::pair{"{\"reply\":\"Made a standing cat, 65 mm tall", 65.0}, std::pair{"{\"reply\":\"Made a 150 mm banana", 0.0}, std::pair{"{\"reply\":\"Made a 100 mm toy car", 43.0}, std::pair{"{\"reply\":\"Made a sitting teddy bear, 70 mm tall", 70.0}}) {
         const int start = prompt.indexOf(QLatin1String(opening));
         CHECK(start > 0);
         CHECK(parseAssistantReply(prompt.mid(start, prompt.indexOf('\n', start) - start), &reply, &error));
@@ -1170,6 +1174,158 @@ static void testPicking() {
     CHECK(pickMesh(triangle, identity, 100, 100, {72, 72, 80, 80}).has_value());  // over one corner
 }
 
+// Real "make a dog" replies from three local models (2026-11-13). Each got the parts but
+// not the layout: back legs in mid-air, ears sharing one spot or stuck out sideways.
+static void testFourLegged() {
+    CHECK(nameHasWord("ear_left", {"ear"}) && nameHasWord("EarsLeft", {"ear"}) && nameHasWord("left ear", {"ear"}));
+    CHECK(!nameHasWord("leg_rear_left", {"ear"}) && !nameHasWord("bear", {"ear"}) && !nameHasWord("gear", {"ear"}));
+    CHECK(nameHasWord("paw_back_left", {"paw"}) && nameHasWord("hooves", {"hoove"}) && nameHasWord("feet", {"feet"}));
+
+    const char* replies[] = {
+        // gemma3:4b
+        R"({"reply":"ok","features":[{"name":"body","op":"add","shape":"capsule","diameter":30,"height":60,"z":20},{"name":"head","op":"add","shape":"sphere","diameter":20,"y":-30,"z":50},{"name":"ear_left","op":"add","shape":"cylinder","diameter":8,"top_diameter":0,"height":20,"z":55.5},{"name":"ear_right","op":"add","shape":"cylinder","diameter":8,"top_diameter":0,"height":20,"z":55.5},{"name":"leg_front_left","op":"add","shape":"capsule","diameter":8,"height":30,"x":-15,"z":20},{"name":"leg_front_right","op":"add","shape":"capsule","diameter":8,"height":30,"x":15,"z":20},{"name":"leg_back_left","op":"add","shape":"capsule","diameter":8,"height":30,"x":-15,"z":40},{"name":"leg_back_right","op":"add","shape":"capsule","diameter":8,"height":30,"x":15,"z":40},{"name":"tail","op":"add","shape":"capsule","diameter":6,"height":30,"y":-25,"z":45},{"name":"nose","op":"add","shape":"sphere","diameter":4,"y":-25,"z":50},{"name":"paw_left","op":"add","shape":"sphere","diameter":4,"x":-12,"y":-25,"z":20},{"name":"paw_right","op":"add","shape":"sphere","diameter":4,"x":12,"y":-25,"z":20},{"name":"paw_back_left","op":"add","shape":"sphere","diameter":4,"x":-12,"y":25,"z":40},{"name":"paw_back_right","op":"add","shape":"sphere","diameter":4,"x":12,"y":25,"z":40}]})",
+        // gemma4:e4b
+        R"({"reply":"ok","features":[{"name":"body","op":"add","shape":"capsule","diameter":30,"height":70,"z":35.55},{"name":"head","op":"add","shape":"sphere","diameter":30,"y":-35.55,"z":55.55},{"name":"ear_left","op":"add","shape":"cylinder","diameter":12,"top_diameter":0,"height":20,"y":-35.55,"z":65.55},{"name":"ear_right","op":"add","shape":"cylinder","diameter":12,"top_diameter":0,"height":20,"y":-35.55,"z":65.55},{"name":"snout","op":"add","shape":"ellipsoid","width":16,"depth":16,"height":16,"y":-45.55,"z":55.55},{"name":"leg_front_left","op":"add","shape":"capsule","diameter":12,"height":35,"x":-12,"y":-25.55,"z":17.5},{"name":"leg_front_right","op":"add","shape":"capsule","diameter":12,"height":35,"x":12,"y":-25.55,"z":17.5},{"name":"leg_back_left","op":"add","shape":"capsule","diameter":12,"height":35,"x":-12,"y":25.55,"z":17.5},{"name":"leg_back_right","op":"add","shape":"capsule","diameter":12,"height":35,"x":12,"y":25.55,"z":17.5},{"name":"tail","op":"add","shape":"capsule","diameter":10,"height":40,"y":35.55,"z":50.55}]})",
+        // qwen2.5-coder:7b
+        R"({"reply":"ok","features":[{"name":"body","op":"add","shape":"capsule","diameter":36,"height":50,"z":18},{"name":"head","op":"add","shape":"sphere","diameter":24,"y":-32,"z":46},{"name":"ear_left","op":"add","shape":"cylinder","diameter":10,"top_diameter":0,"height":20,"x":-15,"y":-32,"z":53},{"name":"ear_right","op":"add","shape":"cylinder","diameter":10,"top_diameter":0,"height":20,"x":15,"y":-32,"z":53},{"name":"snout","op":"add","shape":"ellipsoid","width":14,"depth":14,"height":14,"y":-43,"z":44},{"name":"leg_front_left","op":"add","shape":"capsule","diameter":9,"height":30,"x":-8,"y":-20,"z":15},{"name":"leg_front_right","op":"add","shape":"capsule","diameter":9,"height":30,"x":8,"y":-20,"z":15},{"name":"leg_back_left","op":"add","shape":"capsule","diameter":9,"height":30,"x":-8,"y":20,"z":15},{"name":"leg_back_right","op":"add","shape":"capsule","diameter":9,"height":30,"x":8,"y":20,"z":15},{"name":"tail","op":"add","shape":"curve","diameter":6,"top_diameter":4,"height":30,"x":0,"y":39.5,"z":50}]})",
+    };
+    for (const char* json : replies) {
+        AssistantReply reply;
+        QString error;
+        CHECK(parseAssistantReply(QString::fromUtf8(json), &reply, &error, "make a dog"));
+        const auto find = [&](const char* name) -> const Feature& {
+            for (const Feature& f : reply.features)
+                if (f.name == QLatin1String(name)) return f;
+            return reply.features[0];
+        };
+        const EvalResult body = evaluate({find("body")});
+        const EvalResult head = evaluate({find("head")});
+        CHECK(body.max[1] - body.min[1] > body.max[0] - body.min[0]);  // lying along Y
+        CHECK((head.min[1] + head.max[1]) / 2 < (body.min[1] + body.max[1]) / 2);  // head at the front
+        // Every leg stands on the bed and reaches into the body, one under each corner.
+        double xs = 0, ys = 0;
+        for (const char* name : {"leg_front_left", "leg_front_right", "leg_back_left", "leg_back_right"}) {
+            const EvalResult leg = evaluate({find(name)});
+            CHECK(std::abs(leg.min[2]) < 0.1 && leg.max[2] > body.min[2] + 1 && leg.max[2] < body.max[2]);
+            const double x = (leg.min[0] + leg.max[0]) / 2, y = (leg.min[1] + leg.max[1]) / 2;
+            CHECK((x < 0) == QLatin1String(name).contains(QLatin1String("left")) && (y < 0) == QLatin1String(name).contains(QLatin1String("front")));
+            xs += x, ys += y;
+        }
+        CHECK(std::abs(xs) < 0.1 && std::abs(ys) < 0.1);
+        // Ears on the head, one each side.
+        const EvalResult left = evaluate({find("ear_left")}), right = evaluate({find("ear_right")});
+        CHECK(left.max[0] < right.max[0] && left.min[2] < head.max[2] && left.min[2] > (head.min[2] + head.max[2]) / 2 - 1);
+        CHECK(left.min[0] > head.min[0] && right.max[0] < head.max[0]);  // not sticking out past the sides
+        CHECK(std::abs((left.min[1] + left.max[1]) / 2 - (head.min[1] + head.max[1]) / 2) < 2);
+        // Whatever is still loose joins what its name says it belongs to, once that is attached.
+        joinLooseParts(&reply.features);
+        CHECK(looseParts(reply.features).empty());
+        const auto touching = [&](const char* a, const char* b) {
+            std::vector<Feature> pair{find(a), find(b)};
+            return looseParts(pair).empty();
+        };
+        CHECK(touching("ear_left", "head") && touching("ear_right", "head") && touching("head", "body"));
+        for (const Feature& f : reply.features)
+            if (nameHasWord(f.name, {"paw"})) CHECK(touching(qPrintable(f.name), qPrintable(f.name.contains("back") ? f.name.contains("left") ? "leg_back_left" : "leg_back_right" : f.name.contains("left") ? "leg_front_left" : "leg_front_right")));
+    }
+}
+
+// Ollama only accepts a feature's optional fields in the schema's order. Sorted keys once
+// put "width" after "depth" and "height", so boxes lost both: the schema, the prompt's
+// examples and the design sent to the model must all keep one order.
+static void testFieldOrder() {
+    const QStringList order = cadFieldOrder();
+    CHECK(order.indexOf("width") < order.indexOf("depth") && order.indexOf("depth") < order.indexOf("height"));
+    CHECK(order.indexOf("diameter") < order.indexOf("top_diameter") && order.indexOf("top_diameter") < order.indexOf("height"));
+    CHECK(order.indexOf("height") < order.indexOf("x") && order.indexOf("z") < order.indexOf("rx"));
+    // The schema text lists them in that order.
+    const QString schema = QString::fromUtf8(cadResponseSchema());
+    CHECK(QJsonDocument::fromJson(cadResponseSchema()).isObject());
+    int last = schema.indexOf("\"items\"");
+    bool ordered = last > 0;
+    for (const QString& field : order) {
+        const int at = schema.indexOf('"' + field + "\":{", last);
+        ordered &= at > last;
+        last = at;
+    }
+    CHECK(ordered);
+    // Every feature in the prompt's examples, and in the design sent along, follows it.
+    const auto follows = [&](const QString& text) {
+        static const QRegularExpression object(QStringLiteral("\\{\"name\"[^{}]*\\}"));
+        static const QRegularExpression key(QStringLiteral("\"([a-z_]+)\":"));
+        int objects = 0;
+        for (auto it = object.globalMatch(text); it.hasNext();) {
+            const QString one = it.next().captured(0);
+            int previous = -1;
+            for (auto k = key.globalMatch(one); k.hasNext();) {
+                const int at = order.indexOf(k.next().captured(1));
+                if (at < previous) return -1;
+                previous = at;
+            }
+            ++objects;
+        }
+        return objects;
+    };
+    CHECK(follows(cadSystemPrompt()) > 20);
+    Feature box;
+    box.name = "plate";
+    box.shape = Shape::Box;
+    box.width = 40, box.depth = 30, box.height = 5, box.x = 3, box.rz = 10;
+    Feature ear;
+    ear.name = "ear";
+    ear.shape = Shape::Cylinder;
+    ear.diameter = 10, ear.topDiameter = 0, ear.sides = 3, ear.height = 12, ear.z = 5;
+    const QString message = cadUserMessage({box, ear}, 220, 220, "make it taller");
+    CHECK(follows(message) == 2 && message.contains("\"width\":40,\"depth\":30,\"height\":5"));
+}
+
+// The how-to manual: it parses, its topics are well formed, and questions find the right one.
+static void testManual() {
+    const std::vector<ManualTopic>& topics = manual();
+    CHECK(topics.size() > 30);
+    QStringList ids;
+    for (const ManualTopic& t : topics) {
+        CHECK(!ids.contains(t.id));
+        ids << t.id;
+        CHECK(!t.keywords.isEmpty() && !t.summary.isEmpty());
+        for (const ManualStep& step : t.steps) CHECK(!step.text.isEmpty() && !step.text.contains('{'));
+    }
+    const ManualTopic* fillet = manualTopic("fillet");
+    CHECK(fillet && fillet->steps.size() == 5 && fillet->steps[0].target == "modifyButton" && fillet->steps[1].target == "menu_fillet");
+    CHECK(fillet->steps[4].target.isEmpty() && fillet->tips.size() == 1 && fillet->text().contains("2. Click Fillet."));
+    CHECK(manualTopic("scale")->targets().contains("menu_smart"));
+
+    const auto best = [](const QString& question) {
+        const auto found = findTopics(question, 3);
+        return found.empty() ? QString() : found.front()->id;
+    };
+    CHECK(best("How do I round the edges of a box?") == "fillet");
+    CHECK(best("how can I make a hole through my part") == "subtract");
+    CHECK(best("Where is the export to STL?") == "export");
+    CHECK(best("how to bevel an edge") == "chamfer");
+    CHECK(best("how do I make it bigger") == "scale");
+    CHECK(best("how thick should walls be") == "advice-walls");
+    CHECK(best("my part is floating above the bed") == "drop");
+    CHECK(best("how do I use press pull") == "press-pull");
+    CHECK(best("what tolerance for a lid that fits") == "advice-fit");
+    CHECK(findTopics("zzz qqq", 3).empty());
+
+    CHECK(isHelpQuestion("How do I round an edge?") && isHelpQuestion("where is export") && isHelpQuestion("what does smart scale do"));
+    CHECK(isHelpQuestion("Is there a way to hollow a part?") && isHelpQuestion("help") && isHelpQuestion("tolerance for press fit?"));
+    CHECK(!isHelpQuestion("make a cup") && !isHelpQuestion("Can you make a cup?") && !isHelpQuestion("create a 20 mm cube"));
+    CHECK(!isHelpQuestion("make it taller") && !isHelpQuestion("a 40 x 30 x 5 mm plate with a hole") && !isHelpQuestion("please add a handle?"));
+
+    // Without a model, the best topic answers.
+    QString reply, topic;
+    HelpSession::localAnswer(findTopics("how do I export for printing", 3), &reply, &topic);
+    CHECK(topic == "export" && reply.startsWith("Export for printing"));
+    HelpSession::localAnswer({}, &reply, &topic);
+    CHECK(topic.isEmpty() && !reply.isEmpty());
+    // The answer schema only offers the topics given, or none.
+    const QJsonObject schema = QJsonDocument::fromJson(HelpSession::schema({fillet})).object();
+    CHECK(schema.value("properties").toObject().value("topic").toObject().value("enum").toArray() == QJsonArray({"fillet", ""}));
+}
+
 int main() {
     testGeometry();
     testJson();
@@ -1186,6 +1342,9 @@ int main() {
     testCoil();
     testPlacement();
     testModify();
+    testFourLegged();
+    testFieldOrder();
+    testManual();
     std::printf(failures ? "%d check(s) failed\n" : "all checks passed\n", failures);
     return failures ? 1 : 0;
 }

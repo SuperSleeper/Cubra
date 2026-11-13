@@ -4,6 +4,7 @@
 #include "ai/ModelCatalog.h"
 #include "ai/OllamaClient.h"
 #include "ai/DesignSession.h"
+#include "ai/HelpSession.h"
 #include "core/Feature.h"
 
 #include <QJsonArray>
@@ -30,6 +31,7 @@ public:
         std::vector<td::Feature> features;
         int bedWidth;
         int bedDepth;
+        QString interfaceMap;  // the toolbar and controls in words, for help questions
     };
 
     explicit AiPanel(std::function<Context()> context, QWidget* parent = nullptr);
@@ -40,14 +42,20 @@ signals:
     // fresh: a new thing was asked for, to sit beside the design rather than replace it.
     void designProposed(const std::vector<td::Feature>& features, const QString& description, bool fresh);
     void requestFinished(bool applied);
+    // The user asked how to do something the manual covers: walk them through it on screen.
+    void guideRequested(const QString& topic);
 
 private:
     void refresh();
     void onHardware(const td::HardwareInfo& hardware);
     void onState(bool running, const QStringList& installed, int loadedVramMiB);
     void updateCombo();
+    void onModelPicked();
+    QString pickedModel() const;
     void proceed();
     void startChat(const QString& model);
+    void answer(const QString& model);
+    void showAnswer(const QString& reply, const QString& topic, bool chosen);
     void finish(bool applied);
     void cancel();
     void setBusy(bool busy);
@@ -57,6 +65,8 @@ private:
     std::function<Context()> context_;
     td::OllamaClient* client_;
     td::DesignSession* session_;
+    td::HelpSession* help_;
+    bool asking_ = false;  // the request in progress is a help question
     bool fresh_ = false;
 
     td::HardwareInfo hardware_;
@@ -66,6 +76,7 @@ private:
     bool refreshing_ = false;
     QStringList installed_;
 
+    int pickedIndex_ = 0;  // last accepted picker entry, restored when a switch is cancelled
     QString pendingPrompt_;
     QString activeModel_;
     bool busy_ = false;

@@ -29,6 +29,10 @@ EvalResult evaluate(const std::vector<Feature>& features);
 // The middle of a curve's rod, a fraction t (0 to 1) along it, in the shape's own space.
 V3 curveSpine(const Feature& curve, double t);
 
+// Whether a part name contains one of the words as a whole word, plural or not: "ear" is
+// in "ear_left" and "EarsLeft" but not in "rear_leg" or "bear".
+bool nameHasWord(const QString& name, const QStringList& words);
+
 // An added part that touches none of the others, so it would print as a loose piece.
 struct LoosePart {
     QString name;

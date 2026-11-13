@@ -17,6 +17,10 @@ box with a 2 mm wall" or "create a car" into a design, running entirely on your 
   (rectangular, circular, along a path, mirror).
 - **Workspace:** view cube, grid and snap settings, a parts drawer, and adjustable bed size.
 - **Export:** STL and 3MF. Bodies are fused into one watertight mesh on export.
+- **Help:** ask the assistant "how do I round an edge?" and it answers from the built-in
+  how-to manual ([src/ai/manual.md](src/ai/manual.md)), then walks you through the steps
+  with arrows on the real buttons. It works without a model too. A test checks that
+  every toolbar button and menu item is covered by the manual.
 - **AI assistant:** uses [Ollama](https://ollama.com). It picks a model that fits your
   graphics card's free memory and downloads it when needed. Cubra checks the result and
   repairs common mistakes, such as loose parts or a design floating above the bed.
@@ -57,7 +61,11 @@ The command-line tool exports designs and runs the AI without opening a window:
 ```sh
 ./build/cubra-cli design.cubra --stl out.stl --3mf out.3mf
 ./build/cubra-cli ai "create a car" car.cubra
+./build/cubra-cli help "how do I make a hole?" qwen2.5-coder:7b
 ```
+
+`CUBRA_AI_TRACE=1` prints every raw model reply, and `cubra-cli replay REPLY.json OUT.cubra`
+rebuilds a saved reply without a model, for tuning the prompt.
 
 ## Tests
 

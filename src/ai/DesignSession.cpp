@@ -1,5 +1,6 @@
 #include "ai/DesignSession.h"
 
+#include "ai/ModelTuning.h"
 #include "ai/OllamaClient.h"
 #include "core/Geometry.h"
 
@@ -26,10 +27,10 @@ void DesignSession::start(const QString& model, const std::vector<Feature>& curr
     keepsEdits_ = std::any_of(current.begin(), current.end(), [](const Feature& f) {
         return f.shape == Shape::Prisms || f.shape == Shape::Compound || f.shape == Shape::Mesh;
     });
-    messages_ = QJsonArray{QJsonObject{{"role", "system"}, {"content", cadSystemPrompt()}},
+    messages_ = QJsonArray{QJsonObject{{"role", "system"}, {"content", systemPromptFor(model)}},
                            QJsonObject{{"role", "user"}, {"content", cadUserMessage(current, bedWidth, bedDepth, request)}}};
     emit status(tr("Loading %1…").arg(model));
-    client_->chat(model, messages_, cadResponseSchema());
+    client_->chat(model, messages_, cadResponseSchema(), tuningFor(model).options());
 }
 
 void DesignSession::stop() {
@@ -41,7 +42,7 @@ void DesignSession::stop() {
 void DesignSession::ask(const QString& content, const QString& followUp) {
     messages_.append(QJsonObject{{"role", "assistant"}, {"content", content}});
     messages_.append(QJsonObject{{"role", "user"}, {"content", followUp}});
-    client_->chat(model_, messages_, cadResponseSchema());
+    client_->chat(model_, messages_, cadResponseSchema(), tuningFor(model_).options());
 }
 
 void DesignSession::onChatFinished(bool ok, const QString& content, const QString& error) {
@@ -96,26 +97,32 @@ void DesignSession::onChatFinished(bool ok, const QString& content, const QStrin
     apply(std::move(reply));
 }
 
-void DesignSession::apply(AssistantReply reply) {
+QStringList finishDesign(std::vector<Feature>* features, const QString& request, bool newDesign, bool keepsEdits) {
+    QStringList notes;
     // Whatever the model left floating, slide in until it touches what it belongs to.
-    if (const QStringList joined = joinLooseParts(&reply.features); !joined.isEmpty())
-        emit note(tr("Cubra"), tr("Moved %1 in until they overlap the rest, so it prints as one piece.").arg(joined.join(QStringLiteral(", "))));
+    if (const QStringList joined = joinLooseParts(features); !joined.isEmpty())
+        notes << QObject::tr("Moved %1 in until they overlap the rest, so it prints as one piece.").arg(joined.join(QStringLiteral(", ")));
     // Small models get a figure's parts in proportion but not its size: a teddy bear half a
     // metre tall. With no size asked for, make it a usual figure height.
-    if (newDesign_ && !sizeStatedIn(request_) && isFigure(reply.features)) {
-        const EvalResult result = evaluate(reply.features);
+    if (newDesign && !sizeStatedIn(request) && isFigure(*features)) {
+        const EvalResult result = evaluate(*features);
         const double height = result.max[2] - result.min[2];
         constexpr double kFigureHeight = 80;
         if (result.ok && height > 0 && (height > kFigureHeight * 1.25 || height < kFigureHeight * 0.6)) {
-            scaleDesign(&reply.features, kFigureHeight / height);
-            emit note(tr("Cubra"), tr("Scaled it from %1 mm to %2 mm tall. Ask for a size to change it.").arg(height, 0, 'f', 0).arg(kFigureHeight));
+            scaleDesign(features, kFigureHeight / height);
+            notes << QObject::tr("Scaled it from %1 mm to %2 mm tall. Ask for a size to change it.").arg(height, 0, 'f', 0).arg(kFigureHeight);
         }
     }
     // A design hovering over the bed, or sunk into it, would print badly or not at all.
-    if (!keepsEdits_)
-        if (const double shift = seatOnBed(&reply.features); shift != 0)
-            emit note(tr("Cubra"), shift > 0 ? tr("Raised it %1 mm so it rests on the bed.").arg(shift, 0, 'f', 1)
-                                               : tr("Lowered it %1 mm so it rests on the bed.").arg(-shift, 0, 'f', 1));
+    if (!keepsEdits)
+        if (const double shift = seatOnBed(features); shift != 0)
+            notes << (shift > 0 ? QObject::tr("Raised it %1 mm so it rests on the bed.").arg(shift, 0, 'f', 1)
+                                : QObject::tr("Lowered it %1 mm so it rests on the bed.").arg(-shift, 0, 'f', 1));
+    return notes;
+}
+
+void DesignSession::apply(AssistantReply reply) {
+    for (const QString& text : finishDesign(&reply.features, request_, newDesign_, keepsEdits_)) emit note(tr("Cubra"), text);
     end(true, reply.features, reply.text);
 }
 

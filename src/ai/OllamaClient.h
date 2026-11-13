@@ -24,10 +24,15 @@ public:
 
     void refreshState();
     void pull(const QString& model);
-    void chat(const QString& model, const QJsonArray& messages, const QJsonObject& schema);
+    // schema is JSON text, sent as written so its field order survives.
+    void chat(const QString& model, const QJsonArray& messages, const QByteArray& schema, const QJsonObject& options);
     void cancel();
     // Unloads every loaded model except keep (all of them when keep is empty).
     void unloadAllExcept(const QString& keep);
+    // Names of the models Ollama holds in memory now (empty if it is not running).
+    void loadedModels(std::function<void(const QStringList&)> done);
+    // True when a and b name the same model, ignoring an omitted ":latest".
+    static bool sameModel(const QString& a, const QString& b);
 
 signals:
     // loadedVramMiB is GPU memory Ollama holds now and would free for a new model.
@@ -42,7 +47,7 @@ private:
 
     QNetworkRequest jsonRequest(const QString& path) const;
     void unloadOthers(const QString& keep, std::function<void()> done);
-    void startStream(Job job, const QString& path, const QJsonObject& body);
+    void startStream(Job job, const QString& path, const QByteArray& body);
     void consumeLines(bool flushRemainder);
     void handleLine(const QByteArray& line);
     void finishStream();

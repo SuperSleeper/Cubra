@@ -41,12 +41,18 @@ add_library(td_ai STATIC
   src/ai/GpuProbe.cpp
   src/ai/ModelCatalog.cpp
   src/ai/CadPrompt.cpp
+  src/ai/ModelTuning.cpp
+  src/ai/Manual.cpp
+  src/ai/HelpSession.cpp
   src/ai/OllamaClient.cpp
   src/ai/DesignSession.cpp)
 target_link_libraries(td_ai PUBLIC td_core Qt6::Network)
+# The how-to manual the assistant answers from and the walkthrough follows.
+qt_add_resources(td_ai "manual" PREFIX "/" BASE src/ai FILES src/ai/manual.md)
 
 add_library(td_app STATIC
   src/app/MainWindow.cpp
+  src/app/GuideOverlay.cpp
   src/app/Viewport.cpp
   src/app/FeaturePanel.cpp
   src/app/AiPanel.cpp

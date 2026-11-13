@@ -4,6 +4,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 
+#include <cstdio>
 #include <memory>
 
 namespace td {
@@ -60,7 +61,7 @@ void OllamaClient::refreshState() {
     });
 }
 
-void OllamaClient::startStream(Job job, const QString& path, const QJsonObject& body) {
+void OllamaClient::startStream(Job job, const QString& path, const QByteArray& body) {
     cancel();
     job_ = job;
     buffer_.clear();
@@ -70,7 +71,7 @@ void OllamaClient::startStream(Job job, const QString& path, const QJsonObject& 
     QNetworkRequest request = jsonRequest(path);
     // Loading a model or downloading one can legitimately take many minutes.
     request.setTransferTimeout(0);
-    reply_ = network_.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    reply_ = network_.post(request, body);
     connect(reply_, &QNetworkReply::readyRead, this, [this] {
         buffer_.append(reply_->readAll());
         consumeLines(false);
@@ -79,23 +80,36 @@ void OllamaClient::startStream(Job job, const QString& path, const QJsonObject& 
 }
 
 void OllamaClient::pull(const QString& model) {
-    startStream(Job::Pull, QStringLiteral("/api/pull"), QJsonObject{{"model", model}, {"stream", true}});
+    startStream(Job::Pull, QStringLiteral("/api/pull"), QJsonDocument(QJsonObject{{"model", model}, {"stream", true}}).toJson(QJsonDocument::Compact));
 }
 
 void OllamaClient::unloadAllExcept(const QString& keep) {
     unloadOthers(keep, [] {});
 }
 
-void OllamaClient::unloadOthers(const QString& keep, std::function<void()> done) {
+bool OllamaClient::sameModel(const QString& a, const QString& b) {
+    return fullTag(a) == fullTag(b);
+}
+
+void OllamaClient::loadedModels(std::function<void(const QStringList&)> done) {
     QNetworkReply* running = network_.get(jsonRequest(QStringLiteral("/api/ps")));
-    connect(running, &QNetworkReply::finished, this, [this, running, keep, done] {
+    connect(running, &QNetworkReply::finished, this, [running, done] {
         running->deleteLater();
-        QStringList others;
+        QStringList names;
         const QJsonArray loaded = QJsonDocument::fromJson(running->readAll()).object().value("models").toArray();
         for (const QJsonValue& model : loaded) {
             const QString name = model.toObject().value("name").toString();
-            if (!name.isEmpty() && (keep.isEmpty() || fullTag(name) != fullTag(keep))) others << name;
+            if (!name.isEmpty()) names << name;
         }
+        done(names);
+    });
+}
+
+void OllamaClient::unloadOthers(const QString& keep, std::function<void()> done) {
+    loadedModels([this, keep, done](const QStringList& loaded) {
+        QStringList others;
+        for (const QString& name : loaded)
+            if (keep.isEmpty() || !sameModel(name, keep)) others << name;
         if (others.isEmpty()) {
             done();
             return;
@@ -115,15 +129,18 @@ void OllamaClient::unloadOthers(const QString& keep, std::function<void()> done)
     });
 }
 
-void OllamaClient::chat(const QString& model, const QJsonArray& messages, const QJsonObject& schema) {
+void OllamaClient::chat(const QString& model, const QJsonArray& messages, const QByteArray& schema, const QJsonObject& options) {
     cancel();
     const quint64 ticket = ++ticket_;
-    const QJsonObject body{{"model", model},
-                           {"messages", messages},
-                           {"format", schema},
-                           {"stream", true},
-                           {"think", false},
-                           {"options", QJsonObject{{"temperature", 0.1}, {"num_ctx", 8192}}}};
+    QByteArray body = QJsonDocument(QJsonObject{{"model", model},
+                                                {"messages", messages},
+                                                {"stream", true},
+                                                {"think", false},
+                                                {"options", options}})
+                          .toJson(QJsonDocument::Compact);
+    // Spliced in as text: through QJsonObject the schema's fields would come out sorted.
+    body.chop(1);
+    body += ",\"format\":" + schema + '}';
     // Free the GPU of any other model before this one loads.
     unloadOthers(model, [this, ticket, body] {
         if (ticket == ticket_) startStream(Job::Chat, QStringLiteral("/api/chat"), body);
@@ -186,6 +203,10 @@ void OllamaClient::finishStream() {
     reply_ = nullptr;
     job_ = Job::None;
     reply->deleteLater();
+
+    // CUBRA_AI_TRACE=1 prints every raw reply, for comparing and tuning models.
+    static const bool trace = qEnvironmentVariableIntValue("CUBRA_AI_TRACE") > 0;
+    if (trace && job == Job::Chat) std::fprintf(stderr, "[trace] %s\n", qPrintable(error.isEmpty() ? content : error));
 
     if (job == Job::Pull) emit pullFinished(error.isEmpty(), error);
     else if (job == Job::Chat) emit chatFinished(error.isEmpty(), content, error);

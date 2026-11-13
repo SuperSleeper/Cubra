@@ -1,15 +1,21 @@
 #include "app/AiPanel.h"
 
 #include "ai/CadPrompt.h"
+#include "ai/Manual.h"
 
+#include <QCheckBox>
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QKeyEvent>
 #include <QHBoxLayout>
 #include <QJsonObject>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSettings>
+#include <QSignalBlocker>
 #include <QTextBrowser>
 #include <QThread>
 #include <QVBoxLayout>
@@ -19,10 +25,11 @@
 
 namespace {
 const QString kAuto = QStringLiteral("__auto__");
+const QString kSkipUnloadWarning = QStringLiteral("ai/skipUnloadWarning");
 }
 
 AiPanel::AiPanel(std::function<Context()> context, QWidget* parent)
-    : QWidget(parent), context_(std::move(context)), client_(new td::OllamaClient(this)), session_(new td::DesignSession(client_, this)) {
+    : QWidget(parent), context_(std::move(context)), client_(new td::OllamaClient(this)), session_(new td::DesignSession(client_, this)), help_(new td::HelpSession(client_, this)) {
     auto* root = new QVBoxLayout(this);
 
     status_ = new QLabel(tr("Checking hardware…"), this);
@@ -33,7 +40,13 @@ AiPanel::AiPanel(std::function<Context()> context, QWidget* parent)
     root->addWidget(model_);
 
     transcript_ = new QTextBrowser(this);
-    transcript_->setOpenExternalLinks(true);
+    transcript_->setObjectName("aiTranscript");
+    // "Show me on screen" links restart a walkthrough; other links open in the browser.
+    transcript_->setOpenLinks(false);
+    connect(transcript_, &QTextBrowser::anchorClicked, this, [this](const QUrl& url) {
+        if (url.scheme() == QLatin1String("cubra-guide")) emit guideRequested(url.path());
+        else QDesktopServices::openUrl(url);
+    });
     root->addWidget(transcript_, 1);
 
     progressLabel_ = new QLabel(this);
@@ -45,7 +58,7 @@ AiPanel::AiPanel(std::function<Context()> context, QWidget* parent)
     root->addWidget(progress_);
 
     prompt_ = new QPlainTextEdit(this);
-    prompt_->setPlaceholderText(tr("Describe a part, for example: a 60 x 40 x 20 mm box with a 2 mm wall and no lid"));
+    prompt_->setPlaceholderText(tr("Describe a part, such as \"a 60 x 40 x 20 mm box with a 2 mm wall\", or ask a question, such as \"how do I round an edge?\""));
     prompt_->setMaximumHeight(90);
     prompt_->setToolTip(tr("Enter sends. Shift+Enter starts a new line."));
     prompt_->installEventFilter(this);
@@ -64,14 +77,8 @@ AiPanel::AiPanel(std::function<Context()> context, QWidget* parent)
 
     connect(send_, &QPushButton::clicked, this, [this] { submit(prompt_->toPlainText()); });
     connect(cancel_, &QPushButton::clicked, this, &AiPanel::cancel);
-    // Switching models releases the old one straight away. Mid-request the
-    // next chat does it instead, so the running reply is not cut off.
-    connect(model_, &QComboBox::currentIndexChanged, this, [this] {
-        if (busy_) return;
-        const QString selection = model_->currentData().toString();
-        if (selection == kAuto && !haveRecommendation_) return;
-        client_->unloadAllExcept(selection == kAuto ? recommendation_.model.tag : selection);
-    });
+    // Switching models warns, then releases the old one straight away.
+    connect(model_, &QComboBox::currentIndexChanged, this, &AiPanel::onModelPicked);
 
     connect(client_, &td::OllamaClient::stateReady, this, &AiPanel::onState);
     connect(client_, &td::OllamaClient::pullProgress, this, [this](const QString& status, qint64 completed, qint64 total) {
@@ -93,6 +100,8 @@ AiPanel::AiPanel(std::function<Context()> context, QWidget* parent)
     connect(client_, &td::OllamaClient::chatProgress, this, [this](int characters) {
         progressLabel_->setText(tr("%1 is writing the design (%2 characters)").arg(activeModel_).arg(characters));
     });
+    connect(help_, &td::HelpSession::status, progressLabel_, &QLabel::setText);
+    connect(help_, &td::HelpSession::finished, this, &AiPanel::showAnswer);
     connect(session_, &td::DesignSession::note, this, &AiPanel::log);
     connect(session_, &td::DesignSession::status, progressLabel_, &QLabel::setText);
     connect(session_, &td::DesignSession::finished, this, [this](bool applied, const std::vector<td::Feature>& features, const QString& text) {
@@ -101,6 +110,49 @@ AiPanel::AiPanel(std::function<Context()> context, QWidget* parent)
     });
 
     refresh();
+}
+
+QString AiPanel::pickedModel() const {
+    const QString selection = model_->currentData().toString();
+    if (selection != kAuto) return selection;
+    return haveRecommendation_ ? recommendation_.model.tag : QString();
+}
+
+void AiPanel::onModelPicked() {
+    const QString picked = pickedModel();
+    if (picked.isEmpty()) {
+        pickedIndex_ = model_->currentIndex();
+        return;
+    }
+    client_->loadedModels([this, picked](const QStringList& loaded) {
+        if (pickedModel() != picked) return;  // the pick changed again meanwhile
+        QStringList others;
+        for (const QString& name : loaded)
+            if (!td::OllamaClient::sameModel(name, picked)) others << name;
+
+        QSettings settings;
+        if (!others.isEmpty() && !settings.value(kSkipUnloadWarning).toBool()) {
+            QMessageBox box(QMessageBox::Warning, tr("Switch model"),
+                            tr("Loading %1 will unload %2. Only one model is kept loaded at a time, so the GPU "
+                               "has room for it.")
+                                .arg(picked, others.join(QStringLiteral(", "))),
+                            QMessageBox::Ok | QMessageBox::Cancel, this);
+            auto* skip = new QCheckBox(tr("Don't show this again"), &box);
+            box.setCheckBox(skip);
+            box.setDefaultButton(QMessageBox::Ok);
+            const bool accepted = box.exec() == QMessageBox::Ok;
+            if (accepted && skip->isChecked()) settings.setValue(kSkipUnloadWarning, true);
+            if (!accepted) {
+                // Put the picker back without asking again.
+                const QSignalBlocker block(model_);
+                model_->setCurrentIndex(pickedIndex_);
+                return;
+            }
+        }
+        pickedIndex_ = model_->currentIndex();
+        // Mid-request, the next chat unloads instead so the running reply is not cut off.
+        if (!others.isEmpty() && !busy_) client_->unloadAllExcept(picked);
+    });
 }
 
 void AiPanel::refresh() {
@@ -156,6 +208,7 @@ void AiPanel::updateCombo() {
         if (!name.contains(QStringLiteral("embed"))) model_->addItem(name, name);
     const int index = model_->findData(previous);
     model_->setCurrentIndex(index >= 0 ? index : 0);
+    pickedIndex_ = model_->currentIndex();
     model_->blockSignals(false);
 }
 
@@ -165,6 +218,7 @@ void AiPanel::submit(const QString& prompt) {
     log(tr("You"), text);
     prompt_->clear();
     pendingPrompt_ = text;
+    asking_ = td::isHelpQuestion(text);
     setBusy(true);
     progressLabel_->setText(tr("Checking GPU memory…"));
     progress_->setRange(0, 0);
@@ -175,6 +229,13 @@ void AiPanel::submit(const QString& prompt) {
 }
 
 void AiPanel::proceed() {
+    // A question can always be answered from the manual, with or without a model.
+    if (asking_) {
+        const QString selection = model_->currentData().toString();
+        const QString model = selection == kAuto ? recommendation_.model.tag : selection;
+        answer(serverRunning_ && installed_.contains(model) ? model : QString());
+        return;
+    }
     if (!serverRunning_) {
         pendingPrompt_.clear();
         log(tr("Error"), tr("Ollama is not running. Install it from https://ollama.com or start it with: ollama serve"));
@@ -205,6 +266,29 @@ void AiPanel::startChat(const QString& model) {
     session_->start(model, fresh_ ? std::vector<td::Feature>{} : context.features, context.bedWidth, context.bedDepth, request);
 }
 
+void AiPanel::answer(const QString& model) {
+    activeModel_ = model;
+    const QString question = pendingPrompt_;
+    pendingPrompt_.clear();
+    progress_->setRange(0, 0);
+    help_->start(model, question, context_().interfaceMap);
+}
+
+void AiPanel::showAnswer(const QString& reply, const QString& topicId, bool chosen) {
+    log(activeModel_.isEmpty() ? tr("Manual") : activeModel_, reply);
+    if (const td::ManualTopic* topic = td::manualTopic(topicId)) {
+        QString html = QStringLiteral("<ol>");
+        for (const td::ManualStep& step : topic->steps) html += QStringLiteral("<li>%1</li>").arg(step.text.toHtmlEscaped());
+        html += QStringLiteral("</ol>");
+        for (const QString& tip : topic->tips) html += QStringLiteral("<p><i>%1</i></p>").arg(tr("Tip: %1").arg(tip).toHtmlEscaped());
+        html += QStringLiteral("<p><a href=\"cubra-guide:%1\">%2</a></p>").arg(topic->id, tr("Show me on screen"));
+        transcript_->append(html);
+        // Start at once only when the model said these steps fit; a manual match waits for the link.
+        if (chosen) emit guideRequested(topic->id);
+    }
+    finish(false);
+}
+
 void AiPanel::finish(bool applied) {
     setBusy(false);
     emit requestFinished(applied);
@@ -212,6 +296,7 @@ void AiPanel::finish(bool applied) {
 
 void AiPanel::cancel() {
     session_->stop();
+    help_->stop();
     client_->cancel();
     pendingPrompt_.clear();
     log(tr("Cubra"), tr("Cancelled."));
@@ -232,6 +317,10 @@ bool AiPanel::eventFilter(QObject* watched, QEvent* event) {
     auto* key = static_cast<QKeyEvent*>(event);
     if (key->key() != Qt::Key_Return && key->key() != Qt::Key_Enter) return QWidget::eventFilter(watched, event);
 
+    // An empty prompt leaves Enter to the window's shortcut, so it still applies a fillet or a
+    // move; if the key arrives here anyway, it must not type a blank line.
+    if (prompt_->toPlainText().trimmed().isEmpty() && !(key->modifiers() & Qt::ShiftModifier))
+        return event->type() == QEvent::KeyPress;
     // Claim Enter before the window's own Enter shortcut can.
     if (event->type() == QEvent::ShortcutOverride) {
         event->accept();

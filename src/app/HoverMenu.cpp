@@ -13,6 +13,8 @@ constexpr int kHideMs = 200;
 HoverMenu::HoverMenu(QToolButton* anchor, QWidget* host, const QString& frameName) : QObject(host), anchor_(anchor), host_(host) {
     frame_ = new QFrame(host_);
     frame_->setObjectName(frameName);
+    // The how-to walkthrough points at this button while the list is closed.
+    frame_->setProperty("guideAnchor", anchor->objectName());
     frame_->setFrameShape(QFrame::StyledPanel);
     frame_->setAutoFillBackground(true);
     frame_->hide();

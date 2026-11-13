@@ -2,7 +2,9 @@
 
 #include "core/Feature.h"
 
+#include <QByteArray>
 #include <QJsonObject>
+#include <QStringList>
 #include <QString>
 
 #include <vector>
@@ -14,8 +16,11 @@ constexpr double kDefaultAiSize = 20.0;
 
 QString cadSystemPrompt();
 
-// JSON schema that constrains the model's output.
-QJsonObject cadResponseSchema();
+// JSON schema that constrains the model's output, as text so its fields keep their order.
+QByteArray cadResponseSchema();
+
+// The order the schema lists a feature's fields in, which the model must follow.
+QStringList cadFieldOrder();
 
 QString cadUserMessage(const std::vector<Feature>& current, int bedWidth, int bedDepth, const QString& request);
 

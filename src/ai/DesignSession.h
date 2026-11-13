@@ -14,6 +14,10 @@ namespace td {
 
 class OllamaClient;
 
+// The last steps for every accepted design: join loose parts, size a figure with no size
+// asked for, and rest it on the bed. Returns a note for each change, for the transcript.
+QStringList finishDesign(std::vector<Feature>* features, const QString& request, bool newDesign, bool keepsEdits);
+
 // One request to the model, from the prompt to a design Cubra can use.
 // Replies that do not parse are sent back once to be repaired. Designs that
 // build but have loose parts are described back to the model, as a person

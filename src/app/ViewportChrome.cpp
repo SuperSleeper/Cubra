@@ -185,6 +185,9 @@ ViewportChrome::ViewportChrome(Viewport* viewport) : QObject(viewport), viewport
     // ---- The drawer, behind the tab on the right edge ----
     drawer_ = new QFrame(viewport_);
     drawer_->setObjectName("partsDrawer");
+    // While closed, the how-to walkthrough points at the tab that opens it.
+    drawer_->setProperty("guideAnchor", QStringLiteral("drawerTab"));
+    drawer_->setProperty("guideHint", tr("Click the blue tab to open the drawer."));
     drawer_->setFrameShape(QFrame::StyledPanel);
     drawer_->setAutoFillBackground(true);
     auto* drawerRoot = new QVBoxLayout(drawer_);

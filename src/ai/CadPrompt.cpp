@@ -35,6 +35,7 @@ Shapes and their fields:
 - coil: diameter (overall outside), height, wire_diameter, turns. A helical spring wound around Z: use it for any spring, coil, helix or spiral.
 - gear: teeth, height. Optional diameter (overall), bore (centre hole diameter). Teeth point outward. Set internal=true only when the user asks for teeth on the inside, such as a ring gear.
 - star: points, diameter (tip to tip), inner_diameter (across the inner corners, about 0.4 of the diameter), height. A flat star, one tip pointing along +Y.
+Write each feature's fields in this order, leaving out those that do not apply: name, op, shape, sides, points, teeth, diameter, top_diameter, tube_diameter, inner_diameter, width, depth, height, corner, bore, internal, wire_diameter, turns, bend, x, y, z, rx, ry, rz.
 Optional rx, ry, rz rotate in degrees around the feature's placement point (the centre, for spheres, ellipsoids, capsules and curves). Leave out every field that does not apply.
 
 Rules:
@@ -63,6 +64,14 @@ Example request: a snowman with stick arms
 Example response:
 {"reply":"Made a 70 mm snowman with two stick arms.","features":[{"name":"base","op":"add","shape":"sphere","diameter":36,"z":18},{"name":"middle","op":"add","shape":"sphere","diameter":26,"z":44},{"name":"head","op":"add","shape":"sphere","diameter":18,"z":62},{"name":"nose","op":"add","shape":"capsule","diameter":4,"height":10,"y":-10,"z":62,"rx":90},{"name":"arm_left","op":"add","shape":"capsule","diameter":3,"height":22,"x":-18,"z":48,"ry":-60},{"name":"arm_right","op":"add","shape":"capsule","diameter":3,"height":22,"x":18,"z":48,"ry":60}]}
 
+Example request: a teddy bear
+Example response:
+{"reply":"Made a sitting teddy bear, 70 mm tall.","features":[{"name":"body","op":"add","shape":"ellipsoid","width":36,"depth":30,"height":42,"z":21},{"name":"head","op":"add","shape":"sphere","diameter":30,"z":52},{"name":"ear_left","op":"add","shape":"sphere","diameter":12,"x":-11,"z":64},{"name":"ear_right","op":"add","shape":"sphere","diameter":12,"x":11,"z":64},{"name":"snout","op":"add","shape":"ellipsoid","width":12,"depth":8,"height":9,"y":-14,"z":49},{"name":"arm_left","op":"add","shape":"capsule","diameter":10,"height":26,"x":-17,"y":-4,"z":28,"ry":-30},{"name":"arm_right","op":"add","shape":"capsule","diameter":10,"height":26,"x":17,"y":-4,"z":28,"ry":30},{"name":"leg_left","op":"add","shape":"capsule","diameter":12,"height":26,"x":-10,"y":-12,"z":6,"rx":90},{"name":"leg_right","op":"add","shape":"capsule","diameter":12,"height":26,"x":10,"y":-12,"z":6,"rx":90}]}
+
+Example request: a mug with a handle
+Example response:
+{"reply":"Made a 70 mm mug with a handle.","features":[{"name":"cup","op":"add","shape":"cylinder","diameter":60,"height":70},{"name":"handle","op":"add","shape":"torus","diameter":36,"tube_diameter":8,"x":30,"y":4,"z":35,"rx":90},{"name":"inside","op":"subtract","shape":"cylinder","diameter":54,"height":67,"z":4}]}
+
 Example request: a car
 Example response:
 {"reply":"Made a 100 mm toy car.","features":[{"name":"body","op":"add","shape":"box","width":44,"depth":100,"height":20,"corner":3,"z":8},{"name":"cabin","op":"add","shape":"box","width":38,"depth":50,"height":16,"corner":3,"y":5,"z":27},{"name":"wheel_front_left","op":"add","shape":"cylinder","diameter":22,"height":8,"x":-26,"y":-30,"z":11,"ry":90},{"name":"wheel_front_right","op":"add","shape":"cylinder","diameter":22,"height":8,"x":18,"y":-30,"z":11,"ry":90},{"name":"wheel_back_left","op":"add","shape":"cylinder","diameter":22,"height":8,"x":-26,"y":30,"z":11,"ry":90},{"name":"wheel_back_right","op":"add","shape":"cylinder","diameter":22,"height":8,"x":18,"y":30,"z":11,"ry":90}]}
@@ -73,55 +82,77 @@ Example response:
 
 Example request: a cat
 Example response:
-{"reply":"Made a standing cat, 65 mm tall.","features":[{"name":"body","op":"add","shape":"capsule","diameter":26,"height":60,"z":30,"rx":90},{"name":"head","op":"add","shape":"sphere","diameter":24,"y":-32,"z":46},{"name":"ear_left","op":"add","shape":"cylinder","diameter":10,"top_diameter":0,"sides":3,"height":12,"x":-6,"y":-32,"z":53,"rz":90,"ry":-12},{"name":"ear_right","op":"add","shape":"cylinder","diameter":10,"top_diameter":0,"sides":3,"height":12,"x":6,"y":-32,"z":53,"rz":90,"ry":12},{"name":"snout","op":"add","shape":"ellipsoid","width":10,"depth":8,"height":7,"y":-43,"z":44},{"name":"leg_front_left","op":"add","shape":"capsule","diameter":9,"height":30,"x":-8,"y":-20,"z":15},{"name":"leg_front_right","op":"add","shape":"capsule","diameter":9,"height":30,"x":8,"y":-20,"z":15},{"name":"leg_back_left","op":"add","shape":"capsule","diameter":9,"height":30,"x":-8,"y":20,"z":15},{"name":"leg_back_right","op":"add","shape":"capsule","diameter":9,"height":30,"x":8,"y":20,"z":15},{"name":"tail","op":"add","shape":"capsule","diameter":6,"height":36,"y":39.5,"z":50,"rx":-40}]}
+{"reply":"Made a standing cat, 65 mm tall.","features":[{"name":"body","op":"add","shape":"capsule","diameter":26,"height":60,"z":30,"rx":90},{"name":"head","op":"add","shape":"sphere","diameter":24,"y":-32,"z":46},{"name":"ear_left","op":"add","shape":"cylinder","sides":3,"diameter":10,"top_diameter":0,"height":12,"x":-6,"y":-32,"z":53,"ry":-12,"rz":90},{"name":"ear_right","op":"add","shape":"cylinder","sides":3,"diameter":10,"top_diameter":0,"height":12,"x":6,"y":-32,"z":53,"ry":12,"rz":90},{"name":"snout","op":"add","shape":"ellipsoid","width":10,"depth":8,"height":7,"y":-43,"z":44},{"name":"leg_front_left","op":"add","shape":"capsule","diameter":9,"height":30,"x":-8,"y":-20,"z":15},{"name":"leg_front_right","op":"add","shape":"capsule","diameter":9,"height":30,"x":8,"y":-20,"z":15},{"name":"leg_back_left","op":"add","shape":"capsule","diameter":9,"height":30,"x":-8,"y":20,"z":15},{"name":"leg_back_right","op":"add","shape":"capsule","diameter":9,"height":30,"x":8,"y":20,"z":15},{"name":"tail","op":"add","shape":"capsule","diameter":6,"height":36,"y":39.5,"z":50,"rx":-40}]}
 )PROMPT");
 }
 
-QJsonObject cadResponseSchema() {
-    const QJsonObject number{{"type", "number"}};
-    const QJsonObject properties{
-        {"name", QJsonObject{{"type", "string"}}},
-        {"op", QJsonObject{{"type", "string"}, {"enum", QJsonArray{"add", "subtract", "intersect"}}}},
-        {"shape", QJsonObject{{"type", "string"}, {"enum", QJsonArray{"box", "wedge", "cylinder", "sphere", "ellipsoid", "capsule", "curve", "torus", "star", "gear", "coil"}}}},
-        {"width", number},
-        {"depth", number},
-        {"height", number},
-        {"corner", number},
-        {"diameter", number},
-        {"top_diameter", number},
-        {"tube_diameter", number},
-        {"sides", QJsonObject{{"type", "integer"}}},
-        {"points", QJsonObject{{"type", "integer"}}},
-        {"inner_diameter", number},
-        {"teeth", QJsonObject{{"type", "integer"}}},
-        {"bore", number},
-        {"internal", QJsonObject{{"type", "boolean"}}},
-        {"wire_diameter", number},
-        {"turns", number},
-        {"bend", number},
-        {"x", number},
-        {"y", number},
-        {"z", number},
-        {"rx", number},
-        {"ry", number},
-        {"rz", number},
+namespace {
+
+// A feature's fields in the order the model must write them, with their schema types (null
+// for a number). Ollama only accepts optional fields in the schema's order, and QJsonObject
+// sorts keys, which put "width" after "depth" and "height": a model that wrote width first
+// could then no longer give a box its depth or height, and put them in y and z instead.
+// The order suits every shape: width, depth, height for boxes; diameter, top_diameter,
+// height for cylinders; points or teeth before their sizes.
+const char* const kFields[][2] = {
+    {"name", R"({"type":"string"})"},
+    {"op", R"({"type":"string","enum":["add","subtract","intersect"]})"},
+    {"shape", R"({"type":"string","enum":["box","wedge","cylinder","sphere","ellipsoid","capsule","curve","torus","star","gear","coil"]})"},
+    {"sides", R"({"type":"integer"})"},
+    {"points", R"({"type":"integer"})"},
+    {"teeth", R"({"type":"integer"})"},
+    {"diameter", nullptr}, {"top_diameter", nullptr}, {"tube_diameter", nullptr}, {"inner_diameter", nullptr},
+    {"width", nullptr}, {"depth", nullptr}, {"height", nullptr}, {"corner", nullptr}, {"bore", nullptr},
+    {"internal", R"({"type":"boolean"})"},
+    {"wire_diameter", nullptr}, {"turns", nullptr}, {"bend", nullptr},
+    {"x", nullptr}, {"y", nullptr}, {"z", nullptr}, {"rx", nullptr}, {"ry", nullptr}, {"rz", nullptr},
+};
+
+// One feature as compact JSON with its fields in schema order; fields outside it go last.
+QByteArray orderedFeature(const QJsonObject& feature) {
+    QByteArray out = "{";
+    const auto add = [&](const QString& key) {
+        if (out.size() > 1) out += ',';
+        out += QJsonDocument(QJsonObject{{key, feature.value(key)}}).toJson(QJsonDocument::Compact).mid(1).chopped(1);
     };
-    const QJsonObject feature{{"type", "object"}, {"properties", properties}, {"required", QJsonArray{"name", "op", "shape"}}};
-    return QJsonObject{{"type", "object"},
-                       {"properties", QJsonObject{{"reply", QJsonObject{{"type", "string"}}},
-                                                  {"features", QJsonObject{{"type", "array"}, {"items", feature}}}}},
-                       {"required", QJsonArray{"reply", "features"}}};
+    QStringList order;
+    for (const auto& field : kFields) order << QLatin1String(field[0]);
+    for (const QString& key : order)
+        if (feature.contains(key)) add(key);
+    for (const QString& key : feature.keys())
+        if (!order.contains(key)) add(key);
+    return out + '}';
+}
+
+}  // namespace
+
+QByteArray cadResponseSchema() {
+    QByteArray properties;
+    for (const auto& [name, type] : kFields) {
+        if (!properties.isEmpty()) properties += ',';
+        properties += '"' + QByteArray(name) + "\":" + QByteArray(type ? type : R"({"type":"number"})");
+    }
+    return R"({"type":"object","properties":{"reply":{"type":"string"},"features":{"type":"array","items":{"type":"object","properties":{)" + properties +
+           R"(},"required":["name","op","shape"]}}},"required":["reply","features"]})";
+}
+
+QStringList cadFieldOrder() {
+    QStringList order;
+    for (const auto& field : kFields) order << QLatin1String(field[0]);
+    return order;
 }
 
 QString cadUserMessage(const std::vector<Feature>& current, int bedWidth, int bedDepth, const QString& request) {
-    QJsonArray array;
+    // In schema order, so a model copying the design back can write every field.
+    QByteArray array = "[";
     // Direct edits are large point lists a model cannot usefully rewrite. The app keeps them.
-    for (const Feature& f : current)
-        if (f.shape != Shape::Prisms && f.shape != Shape::Compound && f.shape != Shape::Mesh) array.append(featureToAiJson(f));
-    return QStringLiteral("Print bed: %1 x %2 mm.\nCurrent design: %3\nRequest: %4")
-        .arg(bedWidth)
-        .arg(bedDepth)
-        .arg(QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact)), request);
+    for (const Feature& f : current) {
+        if (f.shape == Shape::Prisms || f.shape == Shape::Compound || f.shape == Shape::Mesh) continue;
+        if (array.size() > 1) array += ',';
+        array += orderedFeature(featureToAiJson(f));
+    }
+    array += ']';
+    return QStringLiteral("Print bed: %1 x %2 mm.\nCurrent design: %3\nRequest: %4").arg(bedWidth).arg(bedDepth).arg(QString::fromUtf8(array), request);
 }
 
 namespace {
@@ -168,11 +199,13 @@ QJsonValue fillMissingSizes(const QJsonValue& features, QStringList* filled) {
             const QJsonValue v = f.value(key);
             if (!v.isUndefined() && !v.isNull() && !(v.isDouble() && v.toDouble() == 0)) continue;
             double size = kDefaultAiSize;
+            // A gear is a flat part: 20 mm tall is a pillar of teeth.
+            if (shape == "gear" && key == "height") size = 8;
             // A 20 mm tube needs a ring over 40 mm across; keep the ring a ring.
             if (key == "tube_diameter") size = std::min(size, f.value("diameter").toDouble(kDefaultAiSize * 3) / 4);
             f[key] = size;
             const QString label = QString(key).replace('_', ' ');
-            if (!filled->contains(label)) filled->append(label);
+            if (size == kDefaultAiSize && !filled->contains(label)) filled->append(label);
         }
         out.append(value.isObject() ? QJsonValue(f) : value);
     }
@@ -222,6 +255,184 @@ QJsonValue fromModel(const QJsonValue& features) {
     return out;
 }
 
+
+// Whether a part's name contains any of the words, such as "leg" in "leg_front_left".
+bool nameHas(const Feature& f, std::initializer_list<const char*> words) {
+    QStringList list;
+    for (const char* w : words) list << QLatin1String(w);
+    return nameHasWord(f.name, list);
+}
+
+// -1 for a left part, +1 for a right one, 0 when the name says neither.
+int sideOf(const Feature& f) { return nameHas(f, {"left"}) ? -1 : nameHas(f, {"right"}) ? 1 : 0; }
+
+// -1 for a front part (toward -Y, where an animal's head goes), +1 for a back one, 0 when unsaid.
+int endOf(const Feature& f) { return nameHas(f, {"front", "fore"}) ? -1 : nameHas(f, {"back", "rear", "hind"}) ? 1 : 0; }
+
+struct Bounds {
+    V3 min, max;
+    V3 centre() const { return (min + max) * 0.5; }
+    V3 size() const { return max - min; }
+};
+
+Bounds boundsOf(Feature f) {
+    f.op = Op::Add;
+    const EvalResult r = evaluate({f});
+    return {V3{r.min[0], r.min[1], r.min[2]}, V3{r.max[0], r.max[1], r.max[2]}};
+}
+
+bool boxesMeet(const Bounds& a, const Bounds& b) {
+    return a.min.x <= b.max.x && b.min.x <= a.max.x && a.min.y <= b.max.y && b.min.y <= a.max.y && a.min.z <= b.max.z && b.min.z <= a.max.z;
+}
+
+void shift(Feature& f, const V3& by) {
+    f.x = rounded(f.x + by.x);
+    f.y = rounded(f.y + by.y);
+    f.z = rounded(f.z + by.z);
+}
+
+// Small models put a four-legged animal's legs at odd heights, give both ears the same
+// spot, or leave paws in mid-air. With exactly four legs, Cubra lays the body along Y,
+// stands the legs under its corners on the bed, keeps the head at the front, and seats
+// ears and horns on top of the head and paws under their legs. Returns whether it ran.
+bool arrangeFourLegged(std::vector<Feature>* features) {
+    std::vector<Feature*> legs;
+    Feature* body = nullptr;
+    double biggest = 0;
+    for (Feature& f : *features) {
+        if (f.op != Op::Add) continue;
+        if (nameHas(f, {"leg"})) {
+            legs.push_back(&f);
+            continue;
+        }
+        if (nameHas(f, {"paw", "foot", "feet", "hoof", "ear", "horn", "antler", "head", "tail"})) continue;
+        const Bounds b = boundsOf(f);
+        const V3 size = b.size();
+        const double volume = size.x * size.y * size.z * (nameHas(f, {"body", "torso"}) ? 100 : 1);
+        if (volume > biggest) biggest = volume, body = &f;
+    }
+    if (legs.size() != 4 || !body) return false;
+    // Arms or hands mean an upright figure, such as a teddy bear, not a four-legged animal.
+    for (const Feature& f : *features)
+        if (f.op == Op::Add && nameHas(f, {"arm", "hand"})) return false;
+
+    // A body standing upright like a post: lay it along Y, about its middle.
+    if (body->shape == Shape::Capsule && body->rx == 0 && body->ry == 0) {
+        const V3 centre = V3{body->x, body->y, body->z} + toCentre(*body);
+        body->rx = 90;
+        const V3 bottom = centre - toCentre(*body);
+        body->x = rounded(bottom.x);
+        body->y = rounded(bottom.y);
+        body->z = rounded(bottom.z);
+    }
+    Bounds b = boundsOf(*body);
+    if (b.size().y < b.size().x) return false;  // lying some other way: leave it to the model
+
+    // Legs keep their own thickness and length, within reason for the body's size.
+    double length = 0;
+    for (const Feature* leg : legs) length += boundsOf(*leg).size().z;
+    length = std::clamp(length / 4, b.size().z * 0.6, b.size().z * 2.0);
+
+    // When the legs would barely reach the body, or bury most of their length in it, lift or
+    // lower everything but the legs and paws so the legs sink about a third into the body.
+    const auto isFoot = [](const Feature& f) { return nameHas(f, {"paw", "foot", "feet", "hoof"}); };
+    if (b.min.z < length * 0.5 || b.min.z > length * 0.9) {
+        const V3 lift{0, 0, length * 0.67 - b.min.z};
+        for (Feature& f : *features)
+            if (std::find(legs.begin(), legs.end(), &f) == legs.end() && !isFoot(f)) shift(f, lift);
+        b = boundsOf(*body);
+    }
+
+    // Legs: front pair toward -Y, left pair toward -X. Unnamed ones fill the corners in order.
+    const V3 mid = b.centre();
+    const std::pair<int, int> corners[4] = {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
+    bool used[4] = {};
+    std::vector<std::pair<Feature*, int>> placed;
+    for (int pass = 0; pass < 2; ++pass)
+        for (Feature* leg : legs) {
+            if (std::any_of(placed.begin(), placed.end(), [&](const auto& p) { return p.first == leg; })) continue;
+            for (int c = 0; c < 4; ++c) {
+                if (used[c]) continue;
+                const bool fits = pass == 1 || ((sideOf(*leg) == 0 || sideOf(*leg) == corners[c].first) && (endOf(*leg) == 0 || endOf(*leg) == corners[c].second));
+                if (!fits) continue;
+                used[c] = true;
+                placed.push_back({leg, c});
+                break;
+            }
+        }
+    for (const auto& [leg, c] : placed) {
+        if (leg->shape == Shape::Capsule) {
+            leg->rx = leg->ry = leg->rz = 0;
+            leg->height = rounded(length);
+        }
+        const Bounds lb = boundsOf(*leg);
+        const V3 want{mid.x + corners[c].first * b.size().x * 0.28, mid.y + corners[c].second * b.size().y * 0.3, lb.size().z / 2};
+        shift(*leg, want - lb.centre());
+    }
+
+    // Paws and feet go under the leg on their side and end, else under the nearest leg.
+    for (Feature& f : *features) {
+        if (f.op != Op::Add || !isFoot(f)) continue;
+        const Bounds fb = boundsOf(f);
+        Feature* leg = nullptr;
+        for (const auto& [l, c] : placed)
+            if (corners[c].first == sideOf(f) && corners[c].second == endOf(f)) leg = l;
+        if (!leg) {
+            double nearest = 1e9;
+            for (const auto& [l, c] : placed) {
+                const V3 d = boundsOf(*l).centre() - fb.centre();
+                const double dist = d.x * d.x + d.y * d.y;
+                if (dist < nearest) nearest = dist, leg = l;
+            }
+        }
+        const Bounds lb = boundsOf(*leg);
+        shift(f, V3{lb.centre().x, lb.min.y + lb.size().y * 0.3, fb.size().z / 2} - fb.centre());
+    }
+
+    // A tail in front of the middle goes to the back, the same distance behind.
+    for (Feature& f : *features)
+        if (f.op == Op::Add && nameHas(f, {"tail"}))
+            if (const Bounds tb = boundsOf(f); tb.centre().y < mid.y) shift(f, V3{0, 2 * (mid.y - tb.centre().y), 0});
+
+    // The head belongs at the front, on the body or a neck. When it is behind the middle, or
+    // joined to neither, carry it and its parts to the front of the body, at the top.
+    Feature* head = nullptr;
+    for (Feature& f : *features)
+        if (f.op == Op::Add && nameHas(f, {"head"})) head = &f;
+    if (!head) return true;
+    const auto onHead = [](const Feature& f) { return nameHas(f, {"ear", "horn", "antler", "eye", "nose", "snout", "muzzle", "mouth", "jaw", "beak"}); };
+    const auto joined = [&](const Feature& a) {
+        for (const Feature& f : *features)
+            if (&f == body || (f.op == Op::Add && nameHas(f, {"neck"})))
+                if (looseParts(std::vector<Feature>{a, f}).empty()) return true;
+        return false;
+    };
+    Bounds h = boundsOf(*head);
+    if (h.centre().y > mid.y - b.size().y * 0.25 || !joined(*head)) {
+        const V3 move{mid.x - h.centre().x, b.min.y - h.centre().y, b.max.z - h.centre().z};
+        for (Feature& f : *features)
+            if (&f == head || (f.op == Op::Add && onHead(f))) shift(f, move);
+        h = boundsOf(*head);
+    }
+
+    // Ears and horns off the head, past its sides, or sharing one spot, sit on top of it,
+    // mirrored left and right.
+    std::vector<Feature*> ears;
+    for (Feature& f : *features)
+        if (f.op == Op::Add && nameHas(f, {"ear", "horn", "antler"})) ears.push_back(&f);
+    const bool stacked = ears.size() == 2 && std::abs(boundsOf(*ears[0]).centre().x - boundsOf(*ears[1]).centre().x) < 1;
+    int next = -1;
+    for (Feature* ear : ears) {
+        const Bounds eb = boundsOf(*ear);
+        const bool overHead = std::abs(eb.centre().x - h.centre().x) < h.size().x * 0.4;
+        if (!stacked && overHead && boxesMeet(eb, h)) continue;
+        int side = sideOf(*ear);
+        if (side == 0) side = next, next = -next;
+        const V3 want{h.centre().x + side * h.size().x * 0.3, h.centre().y, h.centre().z + h.size().z * 0.25 + eb.size().z / 2};
+        shift(*ear, want - eb.centre());
+    }
+    return true;
+}
 }  // namespace
 
 QJsonObject featureToAiJson(const Feature& f) {
@@ -404,6 +615,8 @@ bool parseAssistantReply(const QString& content, AssistantReply* reply, QString*
                 f.internal = wanted.internal;
                 parsed.text += wanted.internal ? QStringLiteral(" (Teeth put on the inside, as asked.)") : QStringLiteral(" (Teeth put on the outside.)");
             }
+            // A gear is a flat part. Unless a size was asked for, a tall one is a pillar of teeth.
+            if (!sizeStatedIn(request) && f.diameter > 0 && f.height > f.diameter / 3) f.height = rounded(std::max(4.0, f.diameter / 4));
             // Teeth too fine to print: grow the gear to 1 mm teeth rather than fail.
             const int teeth = f.sides > 0 ? f.sides : 20;
             if (teeth <= kMaxGearTeeth && gearModule(f) < kMinGearModule && teeth >= 6) {
@@ -471,24 +684,13 @@ bool parseAssistantReply(const QString& content, AssistantReply* reply, QString*
     // come back as round cones: make them flat triangles, a flat side to the front.
     for (Feature& f : parsed.features) {
         const bool cone = f.shape == Shape::Cylinder && f.topDiameter == 0 && f.sides == 0 && f.op == Op::Add;
-        if (cone && f.name.contains(QStringLiteral("ear"), Qt::CaseInsensitive)) {
+        if (cone && nameHas(f, {"ear"})) {
             f.sides = 3;
             if (f.rz == 0) f.rz = 90;
         }
     }
-    // A four-legged animal's body stands upright like a post: lay it along Y, about its middle.
-    const int legs = int(std::count_if(parsed.features.begin(), parsed.features.end(),
-                                       [](const Feature& f) { return f.op == Op::Add && f.name.contains(QStringLiteral("leg"), Qt::CaseInsensitive); }));
-    if (legs >= 4)
-        for (Feature& f : parsed.features) {
-            if (f.shape != Shape::Capsule || f.op != Op::Add || f.rx != 0 || f.ry != 0 || !f.name.contains(QStringLiteral("body"), Qt::CaseInsensitive)) continue;
-            const V3 centre = V3{f.x, f.y, f.z} + toCentre(f);
-            f.rx = 90;
-            const V3 bottom = centre - toCentre(f);
-            f.x = rounded(bottom.x);
-            f.y = rounded(bottom.y);
-            f.z = rounded(bottom.z);
-        }
+    // Four-legged animals: stand the legs under the body, and put the head, ears and paws where they belong.
+    if (arrangeFourLegged(&parsed.features)) parsed.text += QStringLiteral(" (Cubra stood the legs under the body and set the head and ears in place.)");
 
     // Vehicles: small models lay wheels flat like coins, make them balls, or line them up
     // along the wrong side. Stand them upright as tyres along the body's long sides.

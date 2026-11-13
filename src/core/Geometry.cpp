@@ -1,5 +1,7 @@
 #include "core/Geometry.h"
 
+#include <QRegularExpression>
+
 #include <manifold/manifold.h>
 
 #include <algorithm>
@@ -620,6 +622,20 @@ EvalResult evaluateSingle(const Feature& feature) {
     }
 }
 
+bool nameHasWord(const QString& name, const QStringList& words) {
+    // Split "leg_front_left", "LegFrontLeft" and "front left leg" alike.
+    QString spaced;
+    for (int i = 0; i < name.size(); ++i) {
+        if (i > 0 && name[i].isUpper() && name[i - 1].isLower()) spaced += QLatin1Char(' ');
+        spaced += name[i].toLower();
+    }
+    static const QRegularExpression separators(QStringLiteral("[^a-z]+"));
+    for (const QString& token : spaced.split(separators, Qt::SkipEmptyParts))
+        for (const QString& word : words)
+            if (token == word || token == word + QLatin1Char('s') || token == word + QStringLiteral("es")) return true;
+    return false;
+}
+
 std::vector<LoosePart> looseParts(const std::vector<Feature>& features) {
     struct Part {
         int feature;
@@ -661,12 +677,31 @@ std::vector<LoosePart> looseParts(const std::vector<Feature>& features) {
     for (size_t i = 0; i < parts.size(); ++i) volumes[root(int(i))] += parts[i].volume;
     const int main = std::max_element(volumes.begin(), volumes.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->first;
 
+    // What a loose part belongs on, by its name: an ear goes on the head even when a leg is
+    // nearer. Parts whose name says nothing join whatever is nearest.
+    static const std::pair<QStringList, QStringList> kHosts[] = {
+        {{"ear", "horn", "antler", "eye", "nose", "snout", "muzzle", "mouth", "jaw", "beak", "hat", "hair", "mane"}, {"head"}},
+        {{"paw", "foot", "feet", "hoof", "shoe"}, {"leg"}},
+        {{"hand", "finger", "claw"}, {"arm"}},
+        {{"tail", "wing", "neck", "leg", "arm", "head", "wheel", "fin"}, {"body", "torso", "chassis", "hull"}},
+        {{"stem", "leaf"}, {"fruit", "apple", "pear", "cherry", "banana"}},
+    };
+    const auto hostsFor = [](const QString& name) {
+        for (const auto& [parts, hosts] : kHosts)
+            if (nameHasWord(name, parts)) return hosts;
+        return QStringList{};
+    };
+    const auto isHost = [](const QString& name, const QStringList& hosts) { return nameHasWord(name, hosts); };
+
     std::vector<LoosePart> loose;
     for (size_t i = 0; i < parts.size(); ++i) {
         if (root(int(i)) == main) continue;
         LoosePart part{parts[i].name, {}, 1e9, parts[i].feature, -1};
+        const QStringList hosts = hostsFor(parts[i].name);
+        bool hostInMain = false;
+        for (size_t j = 0; j < parts.size(); ++j) hostInMain |= root(int(j)) == main && isHost(parts[j].name, hosts);
         for (size_t j = 0; j < parts.size(); ++j) {
-            if (root(int(j)) != main) continue;
+            if (root(int(j)) != main || (hostInMain && !isHost(parts[j].name, hosts))) continue;
             // Between bounding boxes: a fair guide to how far to move it, and instant, where an
             // exact gap over a long reach compares every triangle with every other.
             double squared = 0;

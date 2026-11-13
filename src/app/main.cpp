@@ -4,10 +4,13 @@
 #include <QApplication>
 #include <QSettings>
 #include <QCommandLineParser>
+#include <QDockWidget>
 #include <QIcon>
 #include <QPixmap>
 #include <QSurfaceFormat>
 #include <QTimer>
+
+#include <cstdio>
 
 int main(int argc, char** argv) {
     // Must be set before QApplication so that every GL context matches.
@@ -42,6 +45,8 @@ int main(int argc, char** argv) {
     const QCommandLineOption iconOption("write-icon", "Save the app icon as a PNG of the given size, then exit.", "png:size");
     parser.addOption(screenshotOption);
     parser.addOption(iconOption);
+    const QCommandLineOption mapOption("print-interface-map", "Print the interface map the AI assistant answers questions with, then exit.");
+    parser.addOption(mapOption);
     parser.process(app);
 
     if (parser.isSet(iconOption)) {
@@ -51,6 +56,11 @@ int main(int argc, char** argv) {
     }
 
     MainWindow window;
+    if (parser.isSet(mapOption)) {
+        std::fputs(window.interfaceMap().toUtf8().constData(), stdout);
+        std::fputc('\n', stdout);
+        return 0;
+    }
     window.showMaximized();
     if (!parser.positionalArguments().isEmpty()) window.openFile(parser.positionalArguments().first());
 
@@ -61,6 +71,8 @@ int main(int argc, char** argv) {
     };
 
     if (parser.isSet(promptOption)) {
+        // Show the panel the prompt goes to, so its answer is on screen.
+        if (auto* dock = window.findChild<QDockWidget*>("aiDock")) dock->show();
         // Allow the hardware check that starts with the window to finish.
         QTimer::singleShot(500, &window, [&window, &parser, &promptOption] { window.aiPanel()->submit(parser.value(promptOption)); });
         if (!screenshot.isEmpty()) {

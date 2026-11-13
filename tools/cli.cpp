@@ -1,6 +1,8 @@
 // Headless companion to the GUI: builds a design file and exports it.
 #include "ai/CadPrompt.h"
 #include "ai/DesignSession.h"
+#include "ai/HelpSession.h"
+#include "ai/ModelTuning.h"
 #include "ai/OllamaClient.h"
 #include "core/Document.h"
 #include "core/Exporters.h"
@@ -24,12 +26,14 @@ int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
     const QStringList args = app.arguments().mid(1);
 
+    // With a model, the prompt that model gets: the shared one plus its own notes.
     if (args.value(0) == "--print-system-prompt") {
-        std::fputs(td::cadSystemPrompt().toUtf8().constData(), stdout);
+        std::fputs((args.size() > 1 ? td::systemPromptFor(args[1]) : td::cadSystemPrompt()).toUtf8().constData(), stdout);
         return 0;
     }
     if (args.value(0) == "--print-schema") {
-        std::fputs(QJsonDocument(td::cadResponseSchema()).toJson().constData(), stdout);
+        std::fputs(td::cadResponseSchema().constData(), stdout);
+        std::fputc('\n', stdout);
         return 0;
     }
     // Ask the local model for a design, with the same checks the app runs, and save it.
@@ -57,9 +61,42 @@ int main(int argc, char** argv) {
         app.exec();
         return code;
     }
+    // Answer a question about using Cubra, as the assistant panel does. The interface map
+    // comes from "cubra --print-interface-map"; without a model, the manual answers alone.
+    if (args.value(0) == "help" && args.size() >= 2) {
+        QString map;
+        if (QFile mapFile(args.value(3)); !args.value(3).isEmpty() && mapFile.open(QIODevice::ReadOnly)) map = QString::fromUtf8(mapFile.readAll());
+        td::OllamaClient client;
+        td::HelpSession session(&client);
+        QObject::connect(&session, &td::HelpSession::finished, [&](const QString& reply, const QString& topic, bool chosen) {
+            std::printf("topic: %s%s\nreply: %s\n", qPrintable(topic.isEmpty() ? QStringLiteral("(none)") : topic), chosen ? "" : " (from the manual search)", qPrintable(reply));
+            app.quit();
+        });
+        session.start(args.value(2), args[1], map);
+        if (session.active()) app.exec();
+        return 0;
+    }
+    // Treat a saved raw model reply (CUBRA_AI_TRACE prints them) as the app would, without a model.
+    if (args.value(0) == "replay" && args.size() >= 3) {
+        QFile in(args[1]);
+        if (!in.open(QIODevice::ReadOnly)) return fail(in.errorString());
+        const QString request = args.value(3);
+        td::AssistantReply reply;
+        QString error;
+        if (!td::parseAssistantReply(QString::fromUtf8(in.readAll()), &reply, &error, request)) return fail(error);
+        std::fprintf(stderr, "reply: %s\n", qPrintable(reply.text));
+        for (const QString& note : td::finishDesign(&reply.features, request, true, false)) std::fprintf(stderr, "Cubra: %s\n", qPrintable(note));
+        td::Document document;
+        td::addBody(&document, QFileInfo(args[2]).completeBaseName(), reply.features);
+        QFile out(args[2]);
+        if (!out.open(QIODevice::WriteOnly) || out.write(td::documentToJson(document)) <= 0) return fail("cannot write " + args[2]);
+        return 0;
+    }
     if (args.isEmpty() || args[0].startsWith("--")) {
         std::fputs("usage: cubra-cli DESIGN.cubra [--stl OUT.stl] [--3mf OUT.3mf]\n"
-                   "       cubra-cli ai \"REQUEST\" OUT.cubra [MODEL]\n", stderr);
+                   "       cubra-cli ai \"REQUEST\" OUT.cubra [MODEL]\n"
+                   "       cubra-cli replay REPLY.json OUT.cubra [\"REQUEST\"]\n"
+                   "       cubra-cli help \"QUESTION\" [MODEL] [MAP.txt]\n", stderr);
         return 2;
     }
 

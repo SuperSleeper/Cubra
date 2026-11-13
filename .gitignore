@@ -1,3 +1,4 @@
 build/
 *.stl
 *.3mf
+build-dev/

@@ -1,6 +1,7 @@
 #include "app/MainWindow.h"
 
 #include "app/AiPanel.h"
+#include "ai/Manual.h"
 #include "app/FeaturePanel.h"
 #include "app/HoverMenu.h"
 #include "app/ModifyController.h"
@@ -237,7 +238,7 @@ MainWindow::MainWindow() {
     ai_ = new AiPanel(
         [this] {
             const int target = aiTargetBody();
-            return AiPanel::Context{target >= 0 ? document_.bodies[target].features : Features{}, bedWidth_->value(), bedDepth_->value()};
+            return AiPanel::Context{target >= 0 ? document_.bodies[target].features : Features{}, bedWidth_->value(), bedDepth_->value(), interfaceMap()};
         },
         this);
     aiDock_ = new QDockWidget(tr("AI assistant (local)"), this);
@@ -286,6 +287,9 @@ MainWindow::MainWindow() {
 
     chrome_ = new ViewportChrome(viewport_);
     chrome_->setDrawer(drawerSections());
+
+    guide_ = new GuideOverlay(this, [this](const QString& name) { return guideSpot(name); });
+    connect(ai_, &AiPanel::guideRequested, this, &MainWindow::showGuide);
     connect(chrome_, &ViewportChrome::homeRequested, this, [this] {
         viewport_->setOrientation(-60, 30, true);
         fitView();
@@ -413,6 +417,7 @@ void MainWindow::buildToolbar() {
 
     auto* toolbar = addToolBar(tr("Main"));
     toolbar->setObjectName("mainToolbar");
+    toolbar_ = toolbar;
     toolbar->setMovable(false);
     toolbar->setIconSize(iconSize);
     toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -427,20 +432,22 @@ void MainWindow::buildToolbar() {
 
     // Everything that was on the File menu lives behind the folder icon.
     auto* fileMenu = new QMenu(this);
-    const auto fileItem = [&](const QString& text, QKeySequence key, auto slot) {
+    const auto fileItem = [&](const char* name, const QString& text, QKeySequence key, auto slot) {
         QAction* a = action(text, key, slot);
+        a->setObjectName(QString::fromLatin1(name));
         fileMenu->addAction(a);
         addAction(a);  // keeps the shortcut working while the menu is closed
     };
-    fileItem(tr("&New"), QKeySequence::New, [this] { newDesign(); });
-    fileItem(tr("&Open…"), QKeySequence::Open, [this] { open(); });
-    fileItem(tr("&Save"), QKeySequence::Save, [this] { save(); });
-    fileItem(tr("Save &As…"), QKeySequence::SaveAs, [this] { saveAs(); });
+    fileItem("file_new", tr("&New"), QKeySequence::New, [this] { newDesign(); });
+    fileItem("file_open", tr("&Open…"), QKeySequence::Open, [this] { open(); });
+    fileItem("file_save", tr("&Save"), QKeySequence::Save, [this] { save(); });
+    fileItem("file_saveas", tr("Save &As…"), QKeySequence::SaveAs, [this] { saveAs(); });
     fileMenu->addSeparator();
-    fileItem(tr("Export &STL…"), QKeySequence(Qt::CTRL | Qt::Key_E), [this] { exportMesh(false); });
-    fileItem(tr("Export &3MF…"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E), [this] { exportMesh(true); });
+    fileItem("file_exportstl", tr("Export &STL…"), QKeySequence(Qt::CTRL | Qt::Key_E), [this] { exportMesh(false); });
+    fileItem("file_export3mf", tr("Export &3MF…"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E), [this] { exportMesh(true); });
     fileMenu->addSeparator();
-    fileItem(tr("&Quit"), QKeySequence::Quit, [this] { close(); });
+    fileItem("file_quit", tr("&Quit"), QKeySequence::Quit, [this] { close(); });
+    fileMenu_ = fileMenu;
 
     auto* folder = new QToolButton(this);
     folder->setObjectName("folderButton");
@@ -533,6 +540,11 @@ void MainWindow::buildToolbar() {
     for (Qt::Key key : {Qt::Key_Return, Qt::Key_Enter})
         shortcut(tr("Apply"), QKeySequence(key), [this] {
             if (steps_->active()) steps_->confirm();
+            // Fillet, chamfer and press pull: their box applies on Enter too, but after a
+            // drag or a click on the model the keys are with the 3D view, which lands here.
+            else if (modify_->active()) {
+                if (!modify_->commitIfChanged()) modify_->cancel();
+            }
             else if (transform_->active()) transform_->commit();
             else if (placement_->active()) placement_->placeNow();  // parts with no size boxes, such as nuts
         });
@@ -572,11 +584,13 @@ void MainWindow::buildToolbar() {
 
     QAction* showDesign = designDock_->toggleViewAction();
     showDesign->setIcon(makeIcon(Icon::DesignPanel, ink));
+    showDesign->setObjectName("showDesignAction");
     showDesign->setToolTip(tr("Show or hide the design panel"));
     toolbar->addAction(showDesign);
 
     QAction* showAi = aiDock_->toggleViewAction();
     showAi->setIcon(makeIcon(Icon::AiPanel, ink));
+    showAi->setObjectName("showAiAction");
     showAi->setToolTip(tr("Show or hide the AI assistant"));
     toolbar->addAction(showAi);
 }
@@ -1619,6 +1633,103 @@ void MainWindow::hideBodies(const std::vector<int>& bodies) {
     pushUndo();
     for (int b : bodies) document_.bodies[b].hidden = true;
     afterChange({});
+}
+
+// ---- The how-to walkthrough ------------------------------------------------------
+
+GuideSpot MainWindow::guideSpot(const QString& name) {
+    GuideSpot spot;
+    if (name.isEmpty()) return spot;
+    const auto at = [&spot](QWidget* widget, bool direct, const QString& hint = {}, QRect rect = {}) {
+        spot.known = true;
+        spot.direct = direct;
+        spot.widget = widget;
+        spot.rect = rect.isNull() ? widget->rect() : rect;
+        spot.hint = hint;
+        return spot;
+    };
+    if (name == QLatin1String("viewport")) {
+        at(viewport_, true);
+        spot.area = true;
+        return spot;
+    }
+    // Toolbar buttons and the folder button's list are actions.
+    if (auto* action = findChild<QAction*>(name)) {
+        spot.known = true;
+        if (QWidget* button = toolbar_->widgetForAction(action)) return at(button, true);
+        if (fileMenu_->actions().contains(action)) {
+            if (fileMenu_->isVisible()) return at(fileMenu_, true, {}, fileMenu_->actionGeometry(action));
+            return at(findChild<QToolButton*>("folderButton"), false, tr("Click the folder button to open its list."));
+        }
+        return spot;
+    }
+    QWidget* widget = findChild<QWidget*>(name);
+    if (!widget) return spot;
+    spot.known = true;
+    if (widget->isVisible()) return at(widget, true);
+    // Hidden in a closed list, drawer or panel: point at what opens it.
+    for (QWidget* w = widget; w; w = w->parentWidget()) {
+        const QString anchor = w->property("guideAnchor").toString();
+        if (!anchor.isEmpty())
+            if (auto* opener = findChild<QWidget*>(anchor); opener && opener->isVisible()) {
+                const QString hint = w->property("guideHint").toString();
+                return at(opener, false, hint.isEmpty() ? tr("Point at this button to open its list.") : hint);
+            }
+        if (auto* dock = qobject_cast<QDockWidget*>(w); dock && dock->isHidden())
+            if (QWidget* toggle = toolbar_->widgetForAction(dock->toggleViewAction())) return at(toggle, false, tr("Click this button to show the panel."));
+    }
+    // A tool's own panel, shown once the tool starts: the bubble explains, with no arrow yet.
+    return spot;
+}
+
+void MainWindow::showGuide(const QString& topicId) {
+    if (const td::ManualTopic* topic = td::manualTopic(topicId)) guide_->start(*topic);
+}
+
+QString MainWindow::interfaceMap() const {
+    const auto clean = [](QString text) { return text.remove(QLatin1Char('&')).replace(QLatin1Char('\t'), QStringLiteral(" ")).simplified(); };
+    // The labels in a hover list, in order.
+    const auto listOf = [&](const QString& anchor) {
+        QStringList items;
+        if (anchor.isEmpty()) return items;
+        for (QFrame* frame : findChildren<QFrame*>())
+            if (frame->property("guideAnchor").toString() == anchor)
+                for (QToolButton* item : frame->findChildren<QToolButton*>(Qt::FindDirectChildrenOnly)) items << clean(item->text());
+        return items;
+    };
+    QStringList lines{tr("Toolbar, left to right:")};
+    for (QAction* action : toolbar_->actions()) {
+        QWidget* widget = toolbar_->widgetForAction(action);
+        auto* button = qobject_cast<QToolButton*>(widget);
+        if (!button && !action->isVisible()) continue;
+        QString label = clean(action->toolTip().isEmpty() ? action->text() : action->toolTip());
+        if (button && button->menu()) {
+            QStringList items;
+            for (QAction* a : button->menu()->actions())
+                if (!a->isSeparator()) items << clean(a->text()) + (a->shortcut().isEmpty() ? QString() : QStringLiteral(" (%1)").arg(a->shortcut().toString()));
+            label = clean(button->toolTip()) + QStringLiteral(": ") + items.join(QStringLiteral(", "));
+        } else if (button) {
+            label = clean(button->toolTip());
+            const QStringList items = listOf(button->objectName());
+            if (!items.isEmpty()) label += QStringLiteral(" (point at it for: %1)").arg(items.join(QStringLiteral(", ")));
+        }
+        if (label.isEmpty()) continue;
+        lines << QStringLiteral("- ") + label;
+    }
+    lines << tr("Top right corner of the 3D view: the view cube (click a face to look from there; a house button returns to the start view).");
+    lines << tr("Bar under the view cube:");
+    if (auto* bar = viewport_->findChild<QFrame*>("navigationBar"))
+        for (QToolButton* button : bar->findChildren<QToolButton*>(Qt::FindDirectChildrenOnly)) {
+            QString label = clean(button->toolTip());
+            const QStringList items = listOf(button->objectName());
+            if (!items.isEmpty()) label += QStringLiteral(" (point at it for: %1)").arg(items.join(QStringLiteral(", ")));
+            lines << QStringLiteral("- ") + label;
+        }
+    lines << tr("Bottom right of the 3D view: Edit Grid (bed size), Snap (mm a drag steps by) and Angle (degrees a turn steps by).");
+    lines << tr("Blue tab on the right edge of the 3D view: opens the parts drawer with shapes, nuts, bolts, washers, gears and colours.");
+    lines << tr("Right-click a solid, a selected face or edge, or empty space for a menu: Move / Rotate, Scale, Drop to the bed, Align, Cut, Copy, Paste, Delete, Hide, Material, Group, Press Pull, Fillet, Chamfer, Measure, Show All, Fit All.");
+    lines << tr("A tool that needs picks shows a step bar at the top of the 3D view listing what to click, with Apply (Enter) and Cancel (Esc).");
+    return lines.join(QLatin1Char('\n'));
 }
 
 // ---- The right-click menu -----------------------------------------------------

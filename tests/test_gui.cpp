@@ -1,6 +1,8 @@
 // Drives the real main window with synthetic input. The window is never shown,
 // but Qt's offscreen platform cannot host an OpenGL widget, so a display is needed.
+#include "ai/Manual.h"
 #include "app/AiPanel.h"
+#include "app/GuideOverlay.h"
 #include "app/FeaturePanel.h"
 #include "app/MainWindow.h"
 #include "app/ModifyController.h"
@@ -284,6 +286,24 @@ static void testSelectionFlow(MainWindow& window, Viewport* viewport, FeaturePan
     QTest::keyClicks(field, "-3");
     CHECK(modify->value() == -3);
     QTest::keyClick(field, Qt::Key_Return);
+    CHECK(!modify->active() && featureCount(window) == 3);
+    action(window, "undoAction")->trigger();
+    CHECK(featureCount(window) == 2);
+
+    // After dragging the arrow the keys are with the 3D view, not the box: Enter still applies.
+    // (It did nothing, because the window's Enter shortcut had no case for these tools.)
+    click(leftTop());
+    if (selection->subKind() != SubKind::Face) click(leftTop());
+    CHECK(modify->active());
+    {
+        const QPointF arrow = modify->handleGrabPoint();
+        leftDrag(viewport, arrow, arrow - QPointF(0, 40));
+    }
+    // A real press on the 3D view takes the keys (Viewport::mousePressEvent); the simulated
+    // drag leaves them in the box, so hand them to the view as a real drag would.
+    viewport->setFocus(Qt::MouseFocusReason);
+    CHECK(modify->value() > 0 && window.focusWidget() == viewport);
+    shortcut(QKeySequence(Qt::Key_Return));
     CHECK(!modify->active() && featureCount(window) == 3);
     action(window, "undoAction")->trigger();
     CHECK(featureCount(window) == 2);
@@ -1519,6 +1539,107 @@ static void testGuidedFlow(MainWindow& window, Viewport* viewport, const char* s
     CHECK(int(doc.bodies.size()) == before && doc.bodies[0].features.size() == 1);
 }
 
+// The how-to manual and its on-screen walkthrough. Every name the manual points at must
+// exist, and every toolbar button, list item and view control must be in some topic:
+// adding or renaming a tool fails here until the manual says how to use it.
+static void testHowTo(MainWindow& window, Viewport* viewport, const char* screenshot) {
+    QStringList covered;
+    for (const td::ManualTopic& topic : td::manual())
+        for (const QString& name : topic.targets()) {
+            covered << name;
+            if (!window.guideSpot(name).known) std::printf("manual topic %s points at %s, which does not exist\n", qPrintable(topic.id), qPrintable(name));
+            CHECK(window.guideSpot(name).known);
+        }
+
+    QStringList controls;
+    auto* toolbar = window.findChild<QToolBar*>("mainToolbar");
+    for (QAction* a : toolbar->actions()) {
+        if (!a->objectName().isEmpty()) controls << a->objectName();
+        if (QWidget* w = toolbar->widgetForAction(a); w && !w->objectName().isEmpty() && qobject_cast<QToolButton*>(w)) controls << w->objectName();
+    }
+    for (QFrame* frame : window.findChildren<QFrame*>()) {
+        if (frame->property("guideAnchor").toString().isEmpty() || frame->objectName() == "partsDrawer") continue;
+        for (QToolButton* item : frame->findChildren<QToolButton*>(Qt::FindDirectChildrenOnly))
+            if (!frame->objectName().startsWith("primitives")) controls << item->objectName();
+    }
+    for (QToolButton* b : window.findChild<QFrame*>("navigationBar")->findChildren<QToolButton*>(Qt::FindDirectChildrenOnly)) controls << b->objectName();
+    for (QAction* a : window.findChild<QToolButton*>("folderButton")->menu()->actions())
+        if (!a->isSeparator()) controls << a->objectName();
+    controls << "editGrid" << "snapLinear" << "snapAngular" << "drawerTab" << "viewCube" << "viewCubeHome" << "primitivesFlyout";
+    controls.removeAll(QString());
+    controls.removeDuplicates();
+    for (const QString& name : controls) {
+        if (!covered.contains(name)) std::printf("no manual topic covers %s\n", qPrintable(name));
+        CHECK(covered.contains(name));
+    }
+    CHECK(controls.size() > 50);
+
+    // The assistant's map of the interface is built from the live toolbar.
+    const QString map = window.interfaceMap();
+    CHECK(map.contains("Fillet") && map.contains("Export STL") && map.contains("Mirror") && map.contains("Visual style"));
+
+    GuideOverlay* guide = window.guide();
+    auto* modify = window.findChild<QToolButton*>("modifyButton");
+    auto* fillet = window.findChild<QToolButton*>("menu_fillet");
+    window.findChild<QFrame*>("modifyMenu")->hide();
+
+    // Round an edge: the ring starts on Modify, with the bubble beside it.
+    emit window.aiPanel()->guideRequested("fillet");
+    QTest::qWait(100);
+    CHECK(guide->active() && guide->step() == 0 && guide->bubble()->isVisible());
+    CHECK(guide->spot().widget == modify && guide->spot().direct);
+    CHECK(guide->bubble()->findChild<QLabel*>("guideText")->text().contains("Modify"));
+    CHECK(!guide->bubble()->geometry().intersects(QRect(modify->mapTo(&window, QPoint()), modify->size())));
+    auto* painter = window.findChild<QWidget*>("guidePainter");
+    CHECK(painter && painter->isVisible() && painter->geometry() == window.rect());
+    if (screenshot) window.grab().save(QString::fromLocal8Bit(screenshot) + "-1-modify.png");
+
+    // Pointing at Modify opens its list, which moves the walkthrough on to Fillet.
+    hoverEnter(modify);
+    QTest::qWait(150);
+    CHECK(guide->step() == 1 && guide->spot().widget == fillet && guide->spot().direct);
+    if (screenshot) window.grab().save(QString::fromLocal8Bit(screenshot) + "-2-fillet.png");
+
+    // With the list closed again, it points back at Modify and says to open it.
+    window.findChild<QFrame*>("modifyMenu")->hide();
+    QTest::qWait(100);
+    CHECK(guide->step() == 1 && guide->spot().widget == modify && !guide->spot().direct && !guide->spot().hint.isEmpty());
+    CHECK(guide->bubble()->findChild<QLabel*>("guideHint")->isVisible());
+
+    // Clicking Fillet completes that step: next, the 3D view, outlined without an arrow.
+    hoverEnter(modify);
+    QTest::qWait(100);
+    QTest::mouseClick(fillet, Qt::LeftButton);
+    QTest::qWait(100);
+    CHECK(guide->step() == 2 && guide->spot().widget == viewport && guide->spot().area);
+    if (screenshot) window.grab().save(QString::fromLocal8Bit(screenshot) + "-3-viewport.png");
+
+    // Back and Next step by hand; the cross ends it.
+    QTest::mouseClick(guide->bubble()->findChild<QPushButton*>("guideBack"), Qt::LeftButton);
+    CHECK(guide->step() == 1);
+    QTest::mouseClick(guide->bubble()->findChild<QPushButton*>("guideNext"), Qt::LeftButton);
+    CHECK(guide->step() == 2);
+    QTest::mouseClick(guide->bubble()->findChild<QPushButton*>("guideClose"), Qt::LeftButton);
+    CHECK(!guide->active() && !guide->bubble()->isVisible() && !painter->isVisible());
+    QTest::keyClick(viewport, Qt::Key_Escape);  // leave the Fillet steps
+
+    // Export: the folder button's list is a menu; closed, step 2 points at the folder button.
+    window.showGuide("export");
+    QTest::mouseClick(guide->bubble()->findChild<QPushButton*>("guideNext"), Qt::LeftButton);
+    CHECK(guide->step() == 1 && guide->spot().widget == window.findChild<QToolButton*>("folderButton") && !guide->spot().direct);
+    window.findChild<QPushButton*>("guideClose")->click();
+
+    // A step inside the closed parts drawer points at its tab.
+    window.showGuide("parts-drawer");
+    QTest::mouseClick(guide->bubble()->findChild<QPushButton*>("guideNext"), Qt::LeftButton);
+    CHECK(guide->spot().widget == window.findChild<QWidget*>("drawerTab") && guide->spot().hint.contains("tab"));
+    // Done on the last step ends it.
+    while (guide->active()) QTest::mouseClick(guide->bubble()->findChild<QPushButton*>("guideNext"), Qt::LeftButton);
+    CHECK(!guide->bubble()->isVisible());
+    window.showGuide("no-such-topic");
+    CHECK(!guide->active());
+}
+
 int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     if (qEnvironmentVariableIsEmpty("DISPLAY") && qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
@@ -1659,6 +1780,7 @@ int main(int argc, char** argv) {
     testContextMenuFlow(window, viewport, argc > 7 ? argv[7] : nullptr);
     testChromeFlow(window, viewport, argc > 8 ? argv[8] : nullptr);
     testGuidedFlow(window, viewport, argc > 9 ? argv[9] : nullptr);
+    testHowTo(window, viewport, argc > 10 ? argv[10] : nullptr);
 
     // A click on the workspace takes the keys back from any text box, so Delete deletes.
     for (QWidget* box : {static_cast<QWidget*>(window.findChild<QComboBox*>()), static_cast<QWidget*>(window.findChild<QPlainTextEdit*>())}) {
