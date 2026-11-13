@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Cubra
+GenericName=3D CAD for printing
+Comment=Design parts for 3D printing and export STL or 3MF
+Exec=@CMAKE_BINARY_DIR@/cubra %f
+Icon=cubra
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+StartupWMClass=cubra

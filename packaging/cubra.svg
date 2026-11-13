@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f3a4a"/>
+      <stop offset="1" stop-color="#151a22"/>
+    </linearGradient>
+    <linearGradient id="top" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#b9e0ff"/>
+      <stop offset="1" stop-color="#6cb3f2"/>
+    </linearGradient>
+    <linearGradient id="left" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f97e0"/>
+      <stop offset="1" stop-color="#2f69b3"/>
+    </linearGradient>
+    <linearGradient id="right" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a7cc7"/>
+      <stop offset="1" stop-color="#1d4c8e"/>
+    </linearGradient>
+    <linearGradient id="bend" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5aa4ea"/>
+      <stop offset="0.45" stop-color="#9fd2ff"/>
+      <stop offset="1" stop-color="#3f80ca"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#f08a2a"/>
+      <stop offset="1" stop-color="#ffc061"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.62" r="0.5">
+      <stop offset="0" stop-color="#4aa3ff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#4aa3ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded tile -->
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#tile)"/>
+  <rect x="8.5" y="8.5" width="239" height="239" rx="53.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <!-- Build plate: an isometric grid under the part -->
+  <ellipse cx="128" cy="170" rx="104" ry="58" fill="url(#glow)"/>
+  <g stroke="#8fb8e6" stroke-opacity="0.28" stroke-width="2" fill="none">
+    <path d="M40 176 L128 220 L216 176 L128 132 Z"/>
+    <path d="M62 165 L150 209 M84 154 L172 198 M106 143 L194 187"/>
+    <path d="M62 187 L150 143 M84 198 L172 154 M106 209 L194 165"/>
+  </g>
+
+  <!-- The part: a block with its front vertical edge rounded by a fillet -->
+  <path d="M128 72 L196 106 L128 140 L60 106 Z" fill="url(#top)"/>
+  <path d="M60 106 L116 134 L116 206 L60 178 Z" fill="url(#left)"/>
+  <path d="M140 134 L196 106 L196 178 L140 206 Z" fill="url(#right)"/>
+  <path d="M116 134 Q128 146 140 134 L140 206 Q128 218 116 206 Z" fill="url(#bend)"/>
+  <path d="M116 134 Q128 146 140 134 L128 140 Z" fill="url(#top)"/>
+
+  <!-- Highlighted selected edge -->
+  <path d="M60 106 L128 72" stroke="#5ff0ff" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Press-pull arrow rising from the top face -->
+  <path d="M128 106 L128 52" stroke="url(#arrow)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M111 60 L128 30 L145 60 Z" fill="#ffc061" stroke="#ffc061" stroke-width="4" stroke-linejoin="round"/>
+</svg>
