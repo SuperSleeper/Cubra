@@ -68,3 +68,7 @@ The command-line tool exports designs and runs the AI without opening a window:
 
 Early development. Tweak, Split Face, Shell, Joint and Sketch tools show their steps but
 don't change the design yet.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
