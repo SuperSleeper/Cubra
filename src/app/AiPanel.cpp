@@ -64,6 +64,14 @@ AiPanel::AiPanel(std::function<Context()> context, QWidget* parent)
 
     connect(send_, &QPushButton::clicked, this, [this] { submit(prompt_->toPlainText()); });
     connect(cancel_, &QPushButton::clicked, this, &AiPanel::cancel);
+    // Switching models releases the old one straight away. Mid-request the
+    // next chat does it instead, so the running reply is not cut off.
+    connect(model_, &QComboBox::currentIndexChanged, this, [this] {
+        if (busy_) return;
+        const QString selection = model_->currentData().toString();
+        if (selection == kAuto && !haveRecommendation_) return;
+        client_->unloadAllExcept(selection == kAuto ? recommendation_.model.tag : selection);
+    });
 
     connect(client_, &td::OllamaClient::stateReady, this, &AiPanel::onState);
     connect(client_, &td::OllamaClient::pullProgress, this, [this](const QString& status, qint64 completed, qint64 total) {

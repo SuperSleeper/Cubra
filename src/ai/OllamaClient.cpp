@@ -4,6 +4,8 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 
+#include <memory>
+
 namespace td {
 namespace {
 
@@ -15,6 +17,11 @@ QUrl serverUrl() {
     if (url.host() == QStringLiteral("0.0.0.0")) url.setHost(QStringLiteral("127.0.0.1"));
     if (url.port() == -1 && url.scheme() == QStringLiteral("http")) url.setPort(11434);
     return url;
+}
+
+// Ollama reports "name" with an explicit tag; requests may leave ":latest" off.
+QString fullTag(const QString& model) {
+    return model.contains(QLatin1Char(':')) ? model : model + QStringLiteral(":latest");
 }
 
 }  // namespace
@@ -75,17 +82,56 @@ void OllamaClient::pull(const QString& model) {
     startStream(Job::Pull, QStringLiteral("/api/pull"), QJsonObject{{"model", model}, {"stream", true}});
 }
 
+void OllamaClient::unloadAllExcept(const QString& keep) {
+    unloadOthers(keep, [] {});
+}
+
+void OllamaClient::unloadOthers(const QString& keep, std::function<void()> done) {
+    QNetworkReply* running = network_.get(jsonRequest(QStringLiteral("/api/ps")));
+    connect(running, &QNetworkReply::finished, this, [this, running, keep, done] {
+        running->deleteLater();
+        QStringList others;
+        const QJsonArray loaded = QJsonDocument::fromJson(running->readAll()).object().value("models").toArray();
+        for (const QJsonValue& model : loaded) {
+            const QString name = model.toObject().value("name").toString();
+            if (!name.isEmpty() && (keep.isEmpty() || fullTag(name) != fullTag(keep))) others << name;
+        }
+        if (others.isEmpty()) {
+            done();
+            return;
+        }
+        // keep_alive 0 unloads; Ollama answers once the memory is released.
+        auto remaining = std::make_shared<int>(static_cast<int>(others.size()));
+        for (const QString& name : others) {
+            QNetworkRequest request = jsonRequest(QStringLiteral("/api/generate"));
+            request.setTransferTimeout(30000);
+            QNetworkReply* unload = network_.post(
+                request, QJsonDocument(QJsonObject{{"model", name}, {"keep_alive", 0}}).toJson(QJsonDocument::Compact));
+            connect(unload, &QNetworkReply::finished, this, [unload, remaining, done] {
+                unload->deleteLater();
+                if (--*remaining == 0) done();
+            });
+        }
+    });
+}
+
 void OllamaClient::chat(const QString& model, const QJsonArray& messages, const QJsonObject& schema) {
-    startStream(Job::Chat, QStringLiteral("/api/chat"),
-                QJsonObject{{"model", model},
-                            {"messages", messages},
-                            {"format", schema},
-                            {"stream", true},
-                            {"think", false},
-                            {"options", QJsonObject{{"temperature", 0.1}, {"num_ctx", 8192}}}});
+    cancel();
+    const quint64 ticket = ++ticket_;
+    const QJsonObject body{{"model", model},
+                           {"messages", messages},
+                           {"format", schema},
+                           {"stream", true},
+                           {"think", false},
+                           {"options", QJsonObject{{"temperature", 0.1}, {"num_ctx", 8192}}}};
+    // Free the GPU of any other model before this one loads.
+    unloadOthers(model, [this, ticket, body] {
+        if (ticket == ticket_) startStream(Job::Chat, QStringLiteral("/api/chat"), body);
+    });
 }
 
 void OllamaClient::cancel() {
+    ++ticket_;
     if (!reply_) return;
     QNetworkReply* reply = reply_;
     reply_ = nullptr;
