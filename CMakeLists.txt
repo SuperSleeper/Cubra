@@ -66,13 +66,15 @@ target_link_libraries(td_app PUBLIC td_ai Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWi
 add_executable(cubra src/app/main.cpp)
 set_target_properties(cubra PROPERTIES OUTPUT_NAME cubra)
 target_link_libraries(cubra PRIVATE td_app)
-qt_add_resources(cubra "appicon" PREFIX "/" BASE packaging FILES packaging/cubra.svg)
+qt_add_resources(cubra "appicon" PREFIX "/" BASE packaging FILES packaging/cubra.png)
 
 # Puts Cubra in the desktop's app list, with its icon: cmake --build build --target desktop-entry
 configure_file(packaging/cubra.desktop.in ${CMAKE_BINARY_DIR}/cubra.desktop @ONLY)
 add_custom_target(desktop-entry
-  COMMAND ${CMAKE_COMMAND} -E make_directory $ENV{HOME}/.local/share/applications $ENV{HOME}/.local/share/icons/hicolor/scalable/apps
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/packaging/cubra.svg $ENV{HOME}/.local/share/icons/hicolor/scalable/apps/cubra.svg
+  COMMAND ${CMAKE_COMMAND} -E make_directory $ENV{HOME}/.local/share/applications $ENV{HOME}/.local/share/icons/hicolor/512x512/apps
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/packaging/cubra.png $ENV{HOME}/.local/share/icons/hicolor/512x512/apps/cubra.png
+  # The old vector icon would win over the PNG, so remove it.
+  COMMAND ${CMAKE_COMMAND} -E rm -f $ENV{HOME}/.local/share/icons/hicolor/scalable/apps/cubra.svg
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/cubra.desktop $ENV{HOME}/.local/share/applications/cubra.desktop
   DEPENDS cubra
   COMMENT "Installing the Cubra launcher and icon for this user")

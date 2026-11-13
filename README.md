@@ -1,3 +1,5 @@
+<p align="center"><img src="packaging/cubra.png" alt="Cubra logo" width="160"></p>
+
 # Cubra
 
 A desktop CAD program for designing 3D prints, for Linux. You build parts from solid

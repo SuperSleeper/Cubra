@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     QApplication::setApplicationName("Cubra");
     // On Wayland the dock finds the icon through the desktop entry of this name.
     QApplication::setDesktopFileName("cubra");
-    QApplication::setWindowIcon(QIcon(":/cubra.svg"));
+    QApplication::setWindowIcon(QIcon(":/cubra.png"));
     {
         // Cubra was called 3Design: carry its settings over the first time.
         QSettings settings;
@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
     if (parser.isSet(iconOption)) {
         const QStringList parts = parser.value(iconOption).split(':');
         const int size = parts.value(1, "256").toInt();
-        return QIcon(":/cubra.svg").pixmap(size, size).save(parts.value(0)) ? 0 : 1;
+        return QIcon(":/cubra.png").pixmap(size, size).save(parts.value(0)) ? 0 : 1;
     }
 
     MainWindow window;
